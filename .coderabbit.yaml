@@ -1,0 +1,123 @@
+# .coderabbit.yaml
+# 루퍼스 부트캠프(Java/Kotlin) 권장 설정 예시
+# 목표: Blocker/Major 중심, 스타일 소음 최소화, 운영/보안/테스트 관점 강화
+
+version: 1
+
+reviews:
+  # PR이 생성/업데이트될 때 자동 리뷰
+  auto_review: true
+
+  # Draft PR은 리뷰하지 않도록(소음 감소)
+  skip_draft: true
+
+  # 리뷰 코멘트 방식
+  comment_style: inline   # inline | summary | both 중 선택(지원 여부에 따라 조정)
+  include_summary: true
+
+  # 리뷰 강도(교육 + 실무 균형)
+  severity_focus:
+    - blocker
+    - major
+
+  # 중복 코멘트/잔소리 방지
+  limits:
+    max_comments_per_file: 8
+    max_total_comments: 40
+    avoid_repeat_comments: true
+
+  # 파일/경로 스코프
+  paths:
+    include:
+      - "src/**"
+      - "build.gradle*"
+      - "settings.gradle*"
+      - "gradle/**"
+    exclude:
+      - "**/*.md"
+      - "**/*.adoc"
+      - "**/*.txt"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.lock"
+      - "**/generated/**"
+      - "**/build/**"
+      - "**/out/**"
+      - "**/.gradle/**"
+
+  # 언어/프레임워크 힌트(리뷰 정확도 향상)
+  context:
+    primary_stack:
+      - kotlin
+      - java
+      - spring-boot
+      - jpa
+    style_guide:
+      kotlin:
+        # Kotlin idiom 관련 힌트
+        discourage_force_unwrap: true      # '!!' 지양
+        discourage_jpa_entity_data_class: true
+        prefer_immutable_collections: true
+      java:
+        discourage_overcomplex_streams: true
+        keep_exception_cause: true
+    spring:
+      transactional_boundary_check: true
+      n_plus_one_check: true
+      controller_service_repository_separation: true
+      exception_to_http_status_check: true
+
+  # 보안/운영 안정성 우선
+  focus_areas:
+    - correctness
+    - security
+    - reliability
+    - performance
+    - testing
+
+  # 스타일/컨벤션은 과도하게 잡지 않도록(ktlint/detekt는 CI로 해결 권장)
+  noise_control:
+    style_comments: low
+    naming_comments: low
+    formatting_comments: low
+
+  # 테스트 제안 강화(학습용)
+  testing:
+    suggest_missing_tests: true
+    require_edge_case_tests: true
+    highlight_flaky_risks: true
+
+  # 리뷰에 포함할 “루퍼스 성장 루프” 문장
+  closing_note:
+    enabled: true
+    template: "다음 PR에서 더 좋아지기 위한 1가지 루프를 제안한다: {{one_actionable_loop}}"
+
+# PR 요약/설명 강화(지원 여부에 따라 사용)
+summary:
+  enabled: true
+  sections:
+    - "변경 목적"
+    - "핵심 변경점"
+    - "리스크/주의사항"
+    - "테스트/검증 방법"
+
+# 민감 정보/로그 관련 가드(지원 여부에 따라 사용)
+security:
+  warn_on_sensitive_logging: true
+  sensitive_keywords:
+    - "password"
+    - "passwd"
+    - "secret"
+    - "token"
+    - "authorization"
+    - "cookie"
+    - "accessKey"
+    - "privateKey"
+
+# 리뷰 언어(한국어로 일관되게)
+output:
+  language: "ko-KR"
+  tone: "formal"
