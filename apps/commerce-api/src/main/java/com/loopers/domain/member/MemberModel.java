@@ -2,6 +2,7 @@ package com.loopers.domain.member;
 
 
 import com.loopers.domain.BaseEntity;
+import com.loopers.infrastructure.jpa.converter.BirthDateConverter;
 import com.loopers.infrastructure.jpa.converter.EmailConverter;
 import com.loopers.infrastructure.jpa.converter.MemberIdConverter;
 import jakarta.persistence.Column;
@@ -28,6 +29,11 @@ public class MemberModel extends BaseEntity {
     @Column(length = 100)
     private Email email;
 
+    @Getter
+    @Convert(converter = BirthDateConverter.class)
+    @Column(nullable = false, length = 10)
+    private BirthDate birthDate;
+
     protected MemberModel() {}
     public MemberModel(String memberId, String password) {
         this.memberId = new MemberId(memberId);
@@ -37,5 +43,10 @@ public class MemberModel extends BaseEntity {
     public MemberModel(String memberId, String password, String email) {
         this(memberId, password);
         this.email = new Email(email);
+    }
+
+    public MemberModel(String memberId, String password, String email, String birthDate) {
+        this(memberId, password, email);
+        this.birthDate = BirthDate.fromString(birthDate);
     }
 }

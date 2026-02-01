@@ -50,5 +50,19 @@ class MemberModelUnitTest {
             // assert
             assertThat(result.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST);
         }
+
+        @DisplayName("생년월일 형식이 yyyy-MM-dd 형식에 맞지 않으면, User 객체 생성에 실패한다.")
+        @Test
+        void createdMemberModel_whenBirthDateIsInvalid() {
+            // arrange
+            String invalidBirthDate = "20230101";
+
+            // act
+            CoreException result = assertThrows(CoreException.class, () ->
+                    new MemberModel("validID1", "password123", "valid@email.com", invalidBirthDate));
+
+            // assert
+            assertThat(result.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST);
+        }
     }
 }
