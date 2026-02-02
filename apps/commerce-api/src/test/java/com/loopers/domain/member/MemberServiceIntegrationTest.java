@@ -15,6 +15,8 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -207,7 +209,70 @@ class MemberServiceIntegrationTest {
                 public boolean existsByMemberId(MemberId memberId) {
                     return memberJpaRepository.existsByMemberId(memberId);
                 }
+
+                @Override
+                public Optional<MemberModel> findByMemberId(MemberId memberId) {
+                    return memberJpaRepository.findByMemberId(memberId);
+                }
             });
+        }
+    }
+
+    @DisplayName("회원 정보를 조회할 때,")
+    @Nested
+    class Get {
+        private static final String VALID_MEMBER_ID = "testuser1";
+        private static final String VALID_PASSWORD = "Test1234!";
+        private static final String VALID_EMAIL = "test@example.com";
+        private static final String VALID_BIRTH_DATE = "1995-05-20";
+        private static final String VALID_NAME = "테스트유저";
+        private static final Gender VALID_GENDER = Gender.MALE;
+
+        @DisplayName("해당 ID 의 회원이 존재할 경우, 회원 정보가 반환된다.")
+        @Test
+        void returnsMemberInfo_whenMemberExists() {
+            // arrange - 회원 가입
+            MemberModel registeredMember = memberService.register(
+                VALID_MEMBER_ID,
+                VALID_PASSWORD,
+                VALID_EMAIL,
+                VALID_BIRTH_DATE,
+                VALID_NAME,
+                VALID_GENDER
+            );
+
+            // act
+            MemberModel foundMember = memberService.getMemberByMemberId(VALID_MEMBER_ID);
+
+            // assert
+            assertAll(
+                () -> assertThat(foundMember).isNotNull(),
+                () -> assertThat(foundMember.getId()).isEqualTo(registeredMember.getId()),
+                () -> assertThat(foundMember.getMemberId().value()).isEqualTo(VALID_MEMBER_ID),
+                () -> assertThat(foundMember.getEmail().address()).isEqualTo(VALID_EMAIL),
+                () -> assertThat(foundMember.getBirthDate().asString()).isEqualTo(VALID_BIRTH_DATE),
+                () -> assertThat(foundMember.getName().value()).isEqualTo(VALID_NAME),
+                () -> assertThat(foundMember.getGender()).isEqualTo(VALID_GENDER)
+            );
+
+            // spy 객체를 통해 findByMemberId 호출 검증
+            verify(spyMemberRepository, times(1)).findByMemberId(any(MemberId.class));
+        }
+
+        @DisplayName("해당 ID 의 회원이 존재하지 않을 경우, null 이 반환된다.")
+        @Test
+        void returnsNull_whenMemberDoesNotExist() {
+            // arrange
+            String nonExistentMemberId = "nonexist1";
+
+            // act
+            MemberModel foundMember = memberService.getMemberByMemberId(nonExistentMemberId);
+
+            // assert
+            assertThat(foundMember).isNull();
+
+            // spy 객체를 통해 findByMemberId 호출 검증
+            verify(spyMemberRepository, times(1)).findByMemberId(any(MemberId.class));
         }
     }
 }

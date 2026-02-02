@@ -35,6 +35,12 @@ public class MemberService {
         return memberRepository.save(member);
     }
 
+    @Transactional(readOnly = true)
+    public MemberModel getMemberByMemberId(String memberId) {
+        return memberRepository.findByMemberId(new MemberId(memberId))
+                .orElse(null);
+    }
+
     private void validateGender(Gender gender) {
         if (gender == null) {
             throw new CoreException(ErrorType.BAD_REQUEST, "성별은 필수입니다.");
