@@ -48,10 +48,11 @@ class MemberServiceIntegrationTest {
     @Nested
     class Post {
         private static final String VALID_MEMBER_ID = "testuser1";
-        private static final String VALID_PASSWORD = "Test!1234!";
+        private static final String VALID_PASSWORD = "Test1234!";
         private static final String VALID_EMAIL = "test@example.com";
         private static final String VALID_BIRTH_DATE = "1995-05-20";
         private static final String VALID_NAME = "테스트유저";
+        private static final Gender VALID_GENDER = Gender.MALE;
 
         @DisplayName("비밀번호는 암호화해야되며, 8~16자의 영문 대소문자, 숫자, 특수문자만 가능하다.")
         @Test
@@ -67,7 +68,7 @@ class MemberServiceIntegrationTest {
 
             // act & assert - 너무 짧은 비밀번호
             CoreException shortPasswordException = assertThrows(CoreException.class,
-                () -> memberService.register(VALID_MEMBER_ID, invalidPasswordTooShort, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME));
+                () -> memberService.register(VALID_MEMBER_ID, invalidPasswordTooShort, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER));
             assertAll(
                 () -> assertThat(shortPasswordException.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
                 () -> assertThat(shortPasswordException.getMessage()).isEqualTo(expectedMessage)
@@ -75,7 +76,7 @@ class MemberServiceIntegrationTest {
 
             // act & assert - 대문자 없는 비밀번호
             CoreException noUpperCaseException = assertThrows(CoreException.class,
-                () -> memberService.register(VALID_MEMBER_ID, invalidPasswordNoUpperCase, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME));
+                () -> memberService.register(VALID_MEMBER_ID, invalidPasswordNoUpperCase, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER));
             assertAll(
                 () -> assertThat(noUpperCaseException.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
                 () -> assertThat(noUpperCaseException.getMessage()).isEqualTo(expectedMessage)
@@ -83,7 +84,7 @@ class MemberServiceIntegrationTest {
 
             // act & assert - 소문자 없는 비밀번호
             CoreException noLowerCaseException = assertThrows(CoreException.class,
-                () -> memberService.register(VALID_MEMBER_ID, invalidPasswordNoLowerCase, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME));
+                () -> memberService.register(VALID_MEMBER_ID, invalidPasswordNoLowerCase, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER));
             assertAll(
                 () -> assertThat(noLowerCaseException.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
                 () -> assertThat(noLowerCaseException.getMessage()).isEqualTo(expectedMessage)
@@ -91,7 +92,7 @@ class MemberServiceIntegrationTest {
 
             // act & assert - 숫자 없는 비밀번호
             CoreException noDigitException = assertThrows(CoreException.class,
-                () -> memberService.register(VALID_MEMBER_ID, invalidPasswordNoDigit, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME));
+                () -> memberService.register(VALID_MEMBER_ID, invalidPasswordNoDigit, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER));
             assertAll(
                 () -> assertThat(noDigitException.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
                 () -> assertThat(noDigitException.getMessage()).isEqualTo(expectedMessage)
@@ -99,7 +100,7 @@ class MemberServiceIntegrationTest {
 
             // act & assert - 특수문자 없는 비밀번호
             CoreException noSpecialCharException = assertThrows(CoreException.class,
-                () -> memberService.register(VALID_MEMBER_ID, invalidPasswordNoSpecialChar, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME));
+                () -> memberService.register(VALID_MEMBER_ID, invalidPasswordNoSpecialChar, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER));
             assertAll(
                 () -> assertThat(noSpecialCharException.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
                 () -> assertThat(noSpecialCharException.getMessage()).isEqualTo(expectedMessage)
@@ -119,7 +120,7 @@ class MemberServiceIntegrationTest {
 
             // act & assert - 생년월일 전체 포함 (yyyyMMdd)
             CoreException fullBirthDateException = assertThrows(CoreException.class,
-                () -> memberService.register(VALID_MEMBER_ID, passwordWithFullBirthDate, VALID_EMAIL, birthDate, VALID_NAME));
+                () -> memberService.register(VALID_MEMBER_ID, passwordWithFullBirthDate, VALID_EMAIL, birthDate, VALID_NAME, VALID_GENDER));
             assertAll(
                 () -> assertThat(fullBirthDateException.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
                 () -> assertThat(fullBirthDateException.getMessage()).isEqualTo(expectedMessage)
@@ -127,7 +128,7 @@ class MemberServiceIntegrationTest {
 
             // act & assert - 월일 포함 (MMdd)
             CoreException monthDayException = assertThrows(CoreException.class,
-                () -> memberService.register(VALID_MEMBER_ID, passwordWithYearMonthDay, VALID_EMAIL, birthDate, VALID_NAME));
+                () -> memberService.register(VALID_MEMBER_ID, passwordWithYearMonthDay, VALID_EMAIL, birthDate, VALID_NAME, VALID_GENDER));
             assertAll(
                 () -> assertThat(monthDayException.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
                 () -> assertThat(monthDayException.getMessage()).isEqualTo(expectedMessage)
@@ -135,7 +136,7 @@ class MemberServiceIntegrationTest {
 
             // act & assert - 년도 포함 (yyyy)
             CoreException yearException = assertThrows(CoreException.class,
-                () -> memberService.register(VALID_MEMBER_ID, passwordWithYear, VALID_EMAIL, birthDate, VALID_NAME));
+                () -> memberService.register(VALID_MEMBER_ID, passwordWithYear, VALID_EMAIL, birthDate, VALID_NAME, VALID_GENDER));
             assertAll(
                 () -> assertThat(yearException.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
                 () -> assertThat(yearException.getMessage()).isEqualTo(expectedMessage)
@@ -146,7 +147,7 @@ class MemberServiceIntegrationTest {
         @Test
         void testUserSave() {
             // arrange & act
-            MemberModel savedMember = memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME);
+            MemberModel savedMember = memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER);
 
             // assert - spy 객체를 통해 save 메서드 호출 검증
             verify(spyMemberRepository, times(1)).save(any(MemberModel.class));
@@ -159,6 +160,7 @@ class MemberServiceIntegrationTest {
                 () -> assertThat(savedMember.getEmail().address()).isEqualTo(VALID_EMAIL),
                 () -> assertThat(savedMember.getBirthDate().asString()).isEqualTo(VALID_BIRTH_DATE),
                 () -> assertThat(savedMember.getName().value()).isEqualTo(VALID_NAME),
+                () -> assertThat(savedMember.getGender()).isEqualTo(VALID_GENDER),
                 // 비밀번호가 암호화되어 저장되었는지 검증
                 () -> assertThat(savedMember.getPassword()).isNotEqualTo(VALID_PASSWORD),
                 () -> assertThat(passwordHasher.matches(VALID_PASSWORD, savedMember.getPassword())).isTrue()
@@ -177,11 +179,11 @@ class MemberServiceIntegrationTest {
         @Test
         void testDuplicateMemberId() {
             // arrange
-            memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME);
+            memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER);
 
             // act
             CoreException exception = assertThrows(CoreException.class,
-                () -> memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME));
+                () -> memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER));
             assertAll(
                 () -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
                 () -> assertThat(exception.getMessage()).isEqualTo("이미 가입된 ID 입니다.")

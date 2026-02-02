@@ -20,18 +20,25 @@ public class MemberService {
     private final PasswordHasher passwordHasher;
 
     @Transactional
-    public MemberModel register(String memberId, String rawPassword, String email, String birthDate, String name) {
+    public MemberModel register(String memberId, String rawPassword, String email, String birthDate, String name, Gender gender) {
         validatePassword(rawPassword);
         validatePasswordNotContainsBirthDate(rawPassword, birthDate);
+        validateGender(gender);
 
         if (memberRepository.existsByMemberId(new MemberId(memberId))) {
             throw new CoreException(ErrorType.BAD_REQUEST, "이미 가입된 ID 입니다.");
         }
 
         String hashedPassword = passwordHasher.hash(rawPassword);
-        MemberModel member = new MemberModel(memberId, hashedPassword, email, birthDate, name);
+        MemberModel member = new MemberModel(memberId, hashedPassword, email, birthDate, name, gender);
 
         return memberRepository.save(member);
+    }
+
+    private void validateGender(Gender gender) {
+        if (gender == null) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "성별은 필수입니다.");
+        }
     }
 
     private void validatePassword(String rawPassword) {
