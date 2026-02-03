@@ -30,4 +30,12 @@ public class MemberService {
         member.matchesPassword(passwordHasher, loginPw);
         return member;
     }
+
+    @Transactional
+    public void changePassword(String loginId, String loginPw,
+                               String currentPassword, String newPassword) {
+        MemberModel member = memberReader.getOrThrow(loginId);
+        member.matchesPassword(passwordHasher, loginPw);
+        member.changePassword(currentPassword, newPassword, passwordHasher);
+    }
 }

@@ -94,6 +94,22 @@ public class MemberModel extends BaseEntity {
         }
     }
 
+    public void changePassword(String rawCurrentPassword, String newRawPassword,
+                               PasswordHasher passwordHasher) {
+        matchesPassword(passwordHasher, rawCurrentPassword);
+
+        if (passwordHasher.matches(newRawPassword, this.password)) {
+            throw new CoreException(ErrorType.BAD_REQUEST,
+                    "새 비밀번호는 기존 비밀번호와 다르게 설정해야 합니다.");
+        }
+
+        validateRawPassword(newRawPassword);
+        validatePasswordNotContainsBirthDate(newRawPassword,
+                this.birthDate != null ? this.birthDate.asString() : null);
+
+        this.password = passwordHasher.hash(newRawPassword);
+    }
+
     private static void validateRawPassword(String rawPassword) {
         if (rawPassword == null || !PASSWORD_PATTERN.matcher(rawPassword).matches()) {
             throw new CoreException(ErrorType.BAD_REQUEST,

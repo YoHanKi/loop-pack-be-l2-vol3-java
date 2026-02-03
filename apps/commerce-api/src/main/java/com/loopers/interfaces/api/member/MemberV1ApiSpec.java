@@ -28,4 +28,14 @@ public interface MemberV1ApiSpec {
             @Parameter(description = "로그인 ID") @RequestHeader("X-Loopers-LoginId") String loginId,
             @Parameter(description = "로그인 비밀번호") @RequestHeader("X-Loopers-LoginPw") String loginPw
     );
+
+    @Operation(
+            summary = "비밀번호 수정",
+            description = "로그인한 회원의 비밀번호를 수정합니다."
+    )
+    ApiResponse<Void> changePassword(
+            @Parameter(description = "로그인 ID") @RequestHeader("X-Loopers-LoginId") String loginId,
+            @Parameter(description = "로그인 비밀번호") @RequestHeader("X-Loopers-LoginPw") String loginPw,
+            @Valid @RequestBody MemberV1Dto.ChangePasswordRequest request
+    );
 }

@@ -221,6 +221,100 @@ class MemberServiceIntegrationTest {
         }
     }
 
+    @DisplayName("비밀번호 변경 시,")
+    @Nested
+    class ChangePassword {
+        private static final String VALID_MEMBER_ID = "testuser1";
+        private static final String VALID_PASSWORD = "Test1234!";
+        private static final String VALID_EMAIL = "test@example.com";
+        private static final String VALID_BIRTH_DATE = "1995-05-20";
+        private static final String VALID_NAME = "테스트유저";
+        private static final Gender VALID_GENDER = Gender.MALE;
+
+        @DisplayName("올바른 기존 비밀번호와 유효한 새 비밀번호를 입력하면, 비밀번호가 변경된다.")
+        @Test
+        void changesPassword_whenValidCurrentAndNewPassword() {
+            // arrange
+            memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER);
+            String newPassword = "NewPass1!";
+
+            // act
+            memberService.changePassword(VALID_MEMBER_ID, VALID_PASSWORD, VALID_PASSWORD, newPassword);
+
+            // assert
+            MemberModel member = memberReader.getOrThrow(VALID_MEMBER_ID);
+            assertThat(passwordHasher.matches(newPassword, member.getPassword())).isTrue();
+        }
+
+        @DisplayName("기존 비밀번호가 일치하지 않으면, 실패한다.")
+        @Test
+        void throwsException_whenCurrentPasswordDoesNotMatch() {
+            // arrange
+            memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER);
+
+            // act
+            CoreException exception = assertThrows(CoreException.class,
+                () -> memberService.changePassword(VALID_MEMBER_ID, VALID_PASSWORD, "WrongPass1!", "NewPass1!"));
+
+            // assert
+            assertAll(
+                () -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
+                () -> assertThat(exception.getMessage()).isEqualTo("비밀번호가 일치하지 않습니다.")
+            );
+        }
+
+        @DisplayName("새 비밀번호가 기존 비밀번호와 동일하면, 실패한다.")
+        @Test
+        void throwsException_whenNewPasswordSameAsCurrent() {
+            // arrange
+            memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER);
+
+            // act
+            CoreException exception = assertThrows(CoreException.class,
+                () -> memberService.changePassword(VALID_MEMBER_ID, VALID_PASSWORD, VALID_PASSWORD, VALID_PASSWORD));
+
+            // assert
+            assertAll(
+                () -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
+                () -> assertThat(exception.getMessage()).isEqualTo("새 비밀번호는 기존 비밀번호와 다르게 설정해야 합니다.")
+            );
+        }
+
+        @DisplayName("새 비밀번호가 형식에 맞지 않으면, 실패한다.")
+        @Test
+        void throwsException_whenNewPasswordInvalidFormat() {
+            // arrange
+            memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER);
+
+            // act
+            CoreException exception = assertThrows(CoreException.class,
+                () -> memberService.changePassword(VALID_MEMBER_ID, VALID_PASSWORD, VALID_PASSWORD, "short"));
+
+            // assert
+            assertAll(
+                () -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
+                () -> assertThat(exception.getMessage()).isEqualTo("비밀번호는 8~16자의 영문 대소문자, 숫자, 특수문자를 모두 포함해야 합니다.")
+            );
+        }
+
+        @DisplayName("새 비밀번호에 생년월일이 포함되면, 실패한다.")
+        @Test
+        void throwsException_whenNewPasswordContainsBirthDate() {
+            // arrange
+            memberService.register(VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER);
+
+            // act
+            CoreException exception = assertThrows(CoreException.class,
+                () -> memberService.changePassword(VALID_MEMBER_ID, VALID_PASSWORD, VALID_PASSWORD, "Pass0520Te!"));
+
+            // assert
+            assertAll(
+                () -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
+                () -> assertThat(exception.getMessage()).isEqualTo("비밀번호에 생년월일을 포함할 수 없습니다.")
+            );
+        }
+    }
+
     @DisplayName("회원 정보를 조회할 때,")
     @Nested
     class Get {

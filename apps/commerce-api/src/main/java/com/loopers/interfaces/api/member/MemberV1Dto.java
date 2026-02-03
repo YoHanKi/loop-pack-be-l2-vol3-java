@@ -36,6 +36,11 @@ public class MemberV1Dto {
         }
     }
 
+    public record ChangePasswordRequest(
+        @NotBlank String currentPassword,
+        @NotBlank String newPassword
+    ) {}
+
     public record MeResponse(
         String memberId,
         String name,

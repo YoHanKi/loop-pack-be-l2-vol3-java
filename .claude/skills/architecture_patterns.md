@@ -87,6 +87,18 @@ public class MemberModel extends BaseEntity {
         }
     }
 
+    public void changePassword(String rawCurrentPassword, String newRawPassword,
+                               PasswordHasher passwordHasher) {
+        matchesPassword(passwordHasher, rawCurrentPassword);
+        if (passwordHasher.matches(newRawPassword, this.password)) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "새 비밀번호는 기존 비밀번호와 다르게 설정해야 합니다.");
+        }
+        validateRawPassword(newRawPassword);
+        validatePasswordNotContainsBirthDate(newRawPassword,
+                this.birthDate != null ? this.birthDate.asString() : null);
+        this.password = passwordHasher.hash(newRawPassword);
+    }
+
     private static void validateRawPassword(String rawPassword) { /* ... */ }
     private static void validatePasswordNotContainsBirthDate(String rawPassword, String birthDate) { /* ... */ }
     private static void validateGender(Gender gender) { /* ... */ }
@@ -184,6 +196,14 @@ public class MemberService {
         member.matchesPassword(passwordHasher, loginPw);
         return member;
     }
+
+    @Transactional
+    public void changePassword(String loginId, String loginPw,
+                               String currentPassword, String newPassword) {
+        MemberModel member = memberReader.getOrThrow(loginId);
+        member.matchesPassword(passwordHasher, loginPw);
+        member.changePassword(currentPassword, newPassword, passwordHasher);
+    }
 }
 ```
 
@@ -192,6 +212,7 @@ public class MemberService {
 - MemberReader를 통한 조회 (읽기 전용 분리)
 - MemberModel.create()에 생성 검증 위임 (단일 엔티티 규칙은 모델이 담당)
 - 중복 체크 등 교차 엔티티 규칙만 Service에서 관리
+- changePassword()는 JPA dirty checking으로 자동 반영
 - Repository 인터페이스 사용 (구현체 의존 X)
 
 #### 4. Repository Interface
