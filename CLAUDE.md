@@ -85,6 +85,7 @@ com.loopers
 ├── domain                    # 도메인 레이어
 │   └── {domain-name}
 │       ├── {Domain}Model.java       # JPA Entity (도메인 모델)
+│       ├── {Domain}Reader.java      # 읽기 전용 도메인 컴포넌트
 │       ├── {Domain}Service.java     # 도메인 비즈니스 로직
 │       ├── {Domain}Repository.java  # Repository 인터페이스
 │       └── {ValueObject}.java       # Value Object (record)
@@ -121,8 +122,9 @@ com.loopers
 #### 1. Domain Layer (도메인 레이어)
 - **책임**: 핵심 비즈니스 로직과 규칙
 - **구성요소**:
-  - `{Domain}Model`: JPA Entity, BaseEntity 상속, 도메인 객체
-  - `{Domain}Service`: 도메인 비즈니스 로직, 트랜잭션 관리
+  - `{Domain}Model`: JPA Entity, BaseEntity 상속, 정적 팩토리 `create()`로 생성 검증 캡슐화, 도메인 행위 메서드 제공
+  - `{Domain}Reader`: 읽기 전용 조회 컴포넌트, VO 변환 및 조회+예외처리 통합
+  - `{Domain}Service`: 교차 엔티티 규칙(중복 체크 등) + 트랜잭션 관리, Model.create()에 생성 검증 위임
   - `{Domain}Repository`: 인터페이스 (구현체는 Infrastructure)
   - Value Objects: record 타입, 불변 객체, 생성자에서 검증
 
@@ -157,6 +159,7 @@ com.loopers
 
 #### 클래스/인터페이스
 - **Entity**: `{Domain}Model` (예: `MemberModel`, `OrderModel`)
+- **Reader**: `{Domain}Reader` (예: `MemberReader`)
 - **Service**: `{Domain}Service` (예: `MemberService`)
 - **Repository Interface**: `{Domain}Repository` (예: `MemberRepository`)
 - **Repository Impl**: `{Domain}RepositoryImpl` (예: `MemberRepositoryImpl`)
@@ -245,6 +248,8 @@ public class MemberV1Dto {
 - **타입**: `class` (JPA Entity)
 - **상속**: `BaseEntity` 상속 (id, createdAt, updatedAt, deletedAt)
 - **생성자**: protected 기본 생성자 + public 생성자 체이닝
+- **팩토리 메서드**: `create()` 정적 메서드로 생성 시 검증 + 암호화 캡슐화
+- **도메인 행위**: 모델이 자신의 상태를 검증하는 메서드 제공 (예: `matchesPassword()`)
 - **필드**: private, @Getter 사용
 - **예시**:
 ```java
@@ -255,12 +260,28 @@ public class MemberModel extends BaseEntity {
     @Convert(converter = MemberIdConverter.class)
     @Column(nullable = false, unique = true, length = 10)
     private MemberId memberId;
-    
+
     protected MemberModel() {}
-    
+
     public MemberModel(String memberId, String password) {
         this.memberId = new MemberId(memberId);
         this.password = password;
+    }
+
+    public static MemberModel create(String memberId, String rawPassword, String email,
+                                      String birthDate, String name, Gender gender,
+                                      PasswordHasher passwordHasher) {
+        validateRawPassword(rawPassword);
+        validatePasswordNotContainsBirthDate(rawPassword, birthDate);
+        validateGender(gender);
+        String hashedPassword = passwordHasher.hash(rawPassword);
+        return new MemberModel(memberId, hashedPassword, email, birthDate, name, gender);
+    }
+
+    public void matchesPassword(PasswordHasher passwordHasher, String rawPassword) {
+        if (!passwordHasher.matches(rawPassword, this.password)) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "비밀번호가 일치하지 않습니다.");
+        }
     }
 }
 ```
@@ -577,6 +598,7 @@ public class MemberV1ApiE2ETest {
 
 ### API 엔드포인트
 - `POST /api/v1/members/register`: 회원 가입
+- `GET /api/v1/members/me`: 내 정보 조회 (X-Loopers-LoginId, X-Loopers-LoginPw 헤더 필요)
 
 ---
 

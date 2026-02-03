@@ -16,6 +16,11 @@
 - **타입**: `record` (불변 객체)
 - **위치**: `domain.{domain}`
 
+#### Reader (읽기 전용 컴포넌트)
+- **패턴**: `{Domain}Reader`
+- **예시**: `MemberReader`, `OrderReader`, `ProductReader`
+- **위치**: `domain.{domain}`
+
 #### Service
 - **패턴**: `{Domain}Service`
 - **예시**: `MemberService`, `OrderService`, `PaymentService`
@@ -211,6 +216,8 @@ public class MemberModel extends BaseEntity {
 - JPA Converter로 Value Object 매핑
 - `protected` 기본 생성자 (JPA 요구사항)
 - Lombok `@Getter` 사용
+- 정적 팩토리 메서드 `create()`로 생성 시 검증 로직 캡슐화
+- 도메인 행위 메서드 (예: `matchesPassword()`) 제공
 
 ## 의존성 주입
 

@@ -3,8 +3,6 @@ package com.loopers.interfaces.api.member;
 import com.loopers.domain.member.MemberModel;
 import com.loopers.domain.member.MemberService;
 import com.loopers.interfaces.api.ApiResponse;
-import com.loopers.support.error.CoreException;
-import com.loopers.support.error.ErrorType;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,12 +41,7 @@ public class MemberV1Controller implements MemberV1ApiSpec {
             @RequestHeader("X-Loopers-LoginId") String loginId,
             @RequestHeader("X-Loopers-LoginPw") String loginPw
     ) {
-        MemberModel member = memberService.getMemberByMemberId(loginId);
-        if (member == null) {
-            throw new CoreException(ErrorType.NOT_FOUND, "해당 ID의 회원이 존재하지 않습니다.");
-        }
-
-        memberService.validatePassword(loginPw, member.getPassword());
+        MemberModel member = memberService.authenticate(loginId, loginPw);
 
         MemberV1Dto.MeResponse response = MemberV1Dto.MeResponse.from(member);
         return ApiResponse.success(response);

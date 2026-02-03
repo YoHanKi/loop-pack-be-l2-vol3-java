@@ -145,6 +145,7 @@ docker-compose -f ./docker/monitoring-compose.yml up
   - Gender: 필수 입력
 - **API 엔드포인트**:
   - `POST /api/v1/members/register`: 회원 가입
+  - `GET /api/v1/members/me`: 내 정보 조회 (X-Loopers-LoginId, X-Loopers-LoginPw 헤더 필요)
 
 ## 참고 문서
 - **CLAUDE.md**: 전체 개발 가이드

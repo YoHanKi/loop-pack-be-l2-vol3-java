@@ -6,12 +6,20 @@ import com.loopers.infrastructure.jpa.converter.BirthDateConverter;
 import com.loopers.infrastructure.jpa.converter.EmailConverter;
 import com.loopers.infrastructure.jpa.converter.MemberIdConverter;
 import com.loopers.infrastructure.jpa.converter.NameConverter;
+import com.loopers.support.error.CoreException;
+import com.loopers.support.error.ErrorType;
 import jakarta.persistence.*;
 import lombok.Getter;
+
+import java.util.regex.Pattern;
 
 @Entity
 @Table(name = "member")
 public class MemberModel extends BaseEntity {
+
+    private static final Pattern PASSWORD_PATTERN = Pattern.compile(
+            "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?]).{8,16}$"
+    );
 
     @Getter
     @Convert(converter = MemberIdConverter.class)
@@ -67,5 +75,52 @@ public class MemberModel extends BaseEntity {
     public MemberModel(String memberId, String password, String email, String birthDate, String name, Gender gender) {
         this(memberId, password, email, birthDate, name);
         this.gender = gender;
+    }
+
+    public static MemberModel create(String memberId, String rawPassword, String email,
+                                      String birthDate, String name, Gender gender,
+                                      PasswordHasher passwordHasher) {
+        validateRawPassword(rawPassword);
+        validatePasswordNotContainsBirthDate(rawPassword, birthDate);
+        validateGender(gender);
+
+        String hashedPassword = passwordHasher.hash(rawPassword);
+        return new MemberModel(memberId, hashedPassword, email, birthDate, name, gender);
+    }
+
+    public void matchesPassword(PasswordHasher passwordHasher, String rawPassword) {
+        if (!passwordHasher.matches(rawPassword, this.password)) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "비밀번호가 일치하지 않습니다.");
+        }
+    }
+
+    private static void validateRawPassword(String rawPassword) {
+        if (rawPassword == null || !PASSWORD_PATTERN.matcher(rawPassword).matches()) {
+            throw new CoreException(ErrorType.BAD_REQUEST,
+                    "비밀번호는 8~16자의 영문 대소문자, 숫자, 특수문자를 모두 포함해야 합니다.");
+        }
+    }
+
+    private static void validatePasswordNotContainsBirthDate(String rawPassword, String birthDate) {
+        if (birthDate == null || birthDate.isBlank()) {
+            return;
+        }
+
+        String cleanBirthDate = birthDate.replace("-", "");
+        String monthDay = cleanBirthDate.substring(4);
+        String year = cleanBirthDate.substring(0, 4);
+
+        if (rawPassword.contains(cleanBirthDate) ||
+            rawPassword.contains(monthDay) ||
+            rawPassword.contains(year)) {
+            throw new CoreException(ErrorType.BAD_REQUEST,
+                    "비밀번호에 생년월일을 포함할 수 없습니다.");
+        }
+    }
+
+    private static void validateGender(Gender gender) {
+        if (gender == null) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "성별은 필수입니다.");
+        }
     }
 }

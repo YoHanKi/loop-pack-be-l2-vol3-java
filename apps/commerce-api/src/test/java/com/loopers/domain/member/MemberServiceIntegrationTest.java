@@ -29,6 +29,9 @@ class MemberServiceIntegrationTest {
     private MemberService memberService;
 
     @Autowired
+    private MemberReader memberReader;
+
+    @Autowired
     private MemberJpaRepository memberJpaRepository;
 
     @Autowired
@@ -242,7 +245,7 @@ class MemberServiceIntegrationTest {
             );
 
             // act
-            MemberModel foundMember = memberService.getMemberByMemberId(VALID_MEMBER_ID);
+            MemberModel foundMember = memberReader.getMemberByMemberId(VALID_MEMBER_ID);
 
             // assert
             assertAll(
@@ -266,7 +269,7 @@ class MemberServiceIntegrationTest {
             String nonExistentMemberId = "nonexist1";
 
             // act
-            MemberModel foundMember = memberService.getMemberByMemberId(nonExistentMemberId);
+            MemberModel foundMember = memberReader.getMemberByMemberId(nonExistentMemberId);
 
             // assert
             assertThat(foundMember).isNull();

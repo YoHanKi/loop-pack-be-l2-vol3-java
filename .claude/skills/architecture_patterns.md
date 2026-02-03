@@ -16,7 +16,7 @@
               ↓
 ┌─────────────────────────────────────────┐
 │          Domain Layer                   │  ← 핵심 비즈니스 로직
-│  (Model, Service, Repository, VO)      │
+│  (Model, Reader, Service, Repository, VO) │
 └─────────────────────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
@@ -45,6 +45,10 @@
 @Entity
 @Table(name = "member")
 public class MemberModel extends BaseEntity {
+    private static final Pattern PASSWORD_PATTERN = Pattern.compile(
+            "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?]).{8,16}$"
+    );
+
     @Getter
     @Convert(converter = MemberIdConverter.class)
     @Column(nullable = false, unique = true, length = 10)
@@ -66,6 +70,26 @@ public class MemberModel extends BaseEntity {
         this.password = password;
         this.email = new Email(email);
     }
+
+    public static MemberModel create(String memberId, String rawPassword, String email,
+                                      String birthDate, String name, Gender gender,
+                                      PasswordHasher passwordHasher) {
+        validateRawPassword(rawPassword);
+        validatePasswordNotContainsBirthDate(rawPassword, birthDate);
+        validateGender(gender);
+        String hashedPassword = passwordHasher.hash(rawPassword);
+        return new MemberModel(memberId, hashedPassword, email, birthDate, name, gender);
+    }
+
+    public void matchesPassword(PasswordHasher passwordHasher, String rawPassword) {
+        if (!passwordHasher.matches(rawPassword, this.password)) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "비밀번호가 일치하지 않습니다.");
+        }
+    }
+
+    private static void validateRawPassword(String rawPassword) { /* ... */ }
+    private static void validatePasswordNotContainsBirthDate(String rawPassword, String birthDate) { /* ... */ }
+    private static void validateGender(Gender gender) { /* ... */ }
 }
 ```
 
@@ -74,6 +98,8 @@ public class MemberModel extends BaseEntity {
 - `BaseEntity` 상속 (id, createdAt, updatedAt, deletedAt)
 - Value Object를 필드로 사용
 - 비즈니스 규칙은 Value Object에 위임
+- 정적 팩토리 메서드 `create()`로 생성 시 검증 + 암호화 캡슐화
+- `matchesPassword()`로 비밀번호 검증 위임
 
 #### 2. Value Object
 ```java
@@ -100,30 +126,12 @@ public record MemberId(String value) {
 - 비즈니스 규칙 캡슐화
 - 도메인 개념 표현
 
-#### 3. Service
+#### 3. Reader (읽기 전용 도메인 컴포넌트)
 ```java
-@Service
+@Component
 @RequiredArgsConstructor
-public class MemberService {
+public class MemberReader {
     private final MemberRepository memberRepository;
-    private final PasswordHasher passwordHasher;
-
-    @Transactional
-    public MemberModel register(String memberId, String rawPassword, String email, 
-                                 String birthDate, String name, Gender gender) {
-        validatePassword(rawPassword);
-        validatePasswordNotContainsBirthDate(rawPassword, birthDate);
-        validateGender(gender);
-
-        if (memberRepository.existsByMemberId(new MemberId(memberId))) {
-            throw new CoreException(ErrorType.BAD_REQUEST, "이미 가입된 ID 입니다.");
-        }
-
-        String hashedPassword = passwordHasher.hash(rawPassword);
-        MemberModel member = new MemberModel(memberId, hashedPassword, email, birthDate, name, gender);
-
-        return memberRepository.save(member);
-    }
 
     @Transactional(readOnly = true)
     public MemberModel getMemberByMemberId(String memberId) {
@@ -131,17 +139,60 @@ public class MemberService {
                 .orElse(null);
     }
 
-    private void validatePassword(String rawPassword) {
-        // 비밀번호 검증 로직
+    @Transactional(readOnly = true)
+    public MemberModel getOrThrow(String memberId) {
+        return memberRepository.findByMemberId(new MemberId(memberId))
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 회원이 존재하지 않습니다."));
+    }
+
+    @Transactional(readOnly = true)
+    public boolean existsByMemberId(String memberId) {
+        return memberRepository.existsByMemberId(new MemberId(memberId));
     }
 }
 ```
 
 **특징**:
-- 비즈니스 로직 구현
-- 트랜잭션 관리
+- 읽기 전용 조회 로직 캡슐화
+- VO 변환(`new MemberId(memberId)`)을 한 곳에서 관리
+- 조회 + 예외 처리를 통합 (`getOrThrow`)
+- Service와 Repository 사이의 중간 계층
+
+#### 4. Service
+```java
+@Service
+@RequiredArgsConstructor
+public class MemberService {
+    private final MemberRepository memberRepository;
+    private final MemberReader memberReader;
+    private final PasswordHasher passwordHasher;
+
+    @Transactional
+    public MemberModel register(String memberId, String rawPassword, String email,
+                                 String birthDate, String name, Gender gender) {
+        if (memberReader.existsByMemberId(memberId)) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "이미 가입된 ID 입니다.");
+        }
+
+        MemberModel member = MemberModel.create(memberId, rawPassword, email, birthDate, name, gender, passwordHasher);
+        return memberRepository.save(member);
+    }
+
+    @Transactional(readOnly = true)
+    public MemberModel authenticate(String loginId, String loginPw) {
+        MemberModel member = memberReader.getOrThrow(loginId);
+        member.matchesPassword(passwordHasher, loginPw);
+        return member;
+    }
+}
+```
+
+**특징**:
+- 도메인 간 조율 및 트랜잭션 관리
+- MemberReader를 통한 조회 (읽기 전용 분리)
+- MemberModel.create()에 생성 검증 위임 (단일 엔티티 규칙은 모델이 담당)
+- 중복 체크 등 교차 엔티티 규칙만 Service에서 관리
 - Repository 인터페이스 사용 (구현체 의존 X)
-- 도메인 규칙 검증
 
 #### 4. Repository Interface
 ```java
@@ -500,6 +551,7 @@ com.loopers
 ├── domain                          # 도메인 계층
 │   ├── member
 │   │   ├── MemberModel.java       # Entity
+│   │   ├── MemberReader.java      # Reader (읽기 전용 컴포넌트)
 │   │   ├── MemberService.java     # Service
 │   │   ├── MemberRepository.java  # Repository Interface
 │   │   ├── MemberId.java          # Value Object
@@ -612,12 +664,12 @@ Client Response
 public class MemberService {
     @Transactional
     public MemberModel register(/* ... */) {
-        // 쓰기 작업
+        // 중복 체크 + MemberModel.create() + save
     }
 
     @Transactional(readOnly = true)
-    public MemberModel getMemberByMemberId(String memberId) {
-        // 읽기 전용
+    public MemberModel authenticate(String loginId, String loginPw) {
+        // 조회 + 비밀번호 검증
     }
 }
 ```
@@ -653,9 +705,16 @@ public record MemberId(String value) {
 
 ### 2. 비즈니스 예외
 ```java
-// Service에서 발생
+// Model 정적 팩토리에서 발생 (단일 엔티티 규칙)
+public static MemberModel create(/* ... */) {
+    validateRawPassword(rawPassword);     // 비밀번호 형식 검증
+    validateGender(gender);               // 필수값 검증
+    // ...
+}
+
+// Service에서 발생 (교차 엔티티 규칙)
 public MemberModel register(/* ... */) {
-    if (memberRepository.existsByMemberId(memberId)) {
+    if (memberReader.existsByMemberId(memberId)) {
         throw new CoreException(ErrorType.BAD_REQUEST, "이미 가입된 ID 입니다.");
     }
 }
