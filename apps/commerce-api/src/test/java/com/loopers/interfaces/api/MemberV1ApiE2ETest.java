@@ -13,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class MemberV1ApiE2ETest {
 
     private static final String ENDPOINT_REGISTER = "/api/v1/members/register";
+    private static final String ENDPOINT_ME = "/api/v1/members/me";
 
     @Autowired
     private TestRestTemplate testRestTemplate;
@@ -98,6 +100,70 @@ public class MemberV1ApiE2ETest {
                 () -> assertTrue(response.getStatusCode().is4xxClientError(),
                     "Expected 4xx status but got: " + response.getStatusCode()),
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST)
+            );
+        }
+    }
+
+    @DisplayName("GET /api/v1/members/me")
+    @Nested
+    class GetMe {
+
+        @DisplayName("내 정보 조회에 성공할 경우, 해당하는 유저 정보를 응답으로 반환한다.")
+        @Test
+        void successfulGetMe_returnsMemberInfoWithMaskedName() {
+            // arrange - 회원가입
+            MemberV1Dto.RegisterRequest registerRequest = new MemberV1Dto.RegisterRequest(
+                "testuser1",
+                "Test1234!",
+                "test@example.com",
+                "1995-05-20",
+                "테스트유저",
+                Gender.MALE
+            );
+            testRestTemplate.exchange(
+                ENDPOINT_REGISTER, HttpMethod.POST, new HttpEntity<>(registerRequest),
+                new ParameterizedTypeReference<ApiResponse<MemberV1Dto.MemberResponse>>() {}
+            );
+
+            // arrange - 로그인 헤더 설정
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-Loopers-LoginId", "testuser1");
+            headers.set("X-Loopers-LoginPw", "Test1234!");
+
+            // act
+            ParameterizedTypeReference<ApiResponse<MemberV1Dto.MeResponse>> responseType = new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<MemberV1Dto.MeResponse>> response =
+                testRestTemplate.exchange(ENDPOINT_ME, HttpMethod.GET, new HttpEntity<>(headers), responseType);
+
+            // assert
+            assertAll(
+                () -> assertTrue(response.getStatusCode().is2xxSuccessful()),
+                () -> assertThat(response.getBody()).isNotNull(),
+                () -> assertThat(response.getBody().data()).isNotNull(),
+                () -> assertThat(response.getBody().data().memberId()).isEqualTo("testuser1"),
+                () -> assertThat(response.getBody().data().email()).isEqualTo("test@example.com"),
+                () -> assertThat(response.getBody().data().birthDate()).isEqualTo("1995-05-20"),
+                () -> assertThat(response.getBody().data().name()).isEqualTo("테스트유*")
+            );
+        }
+
+        @DisplayName("존재하지 않는 ID 로 조회할 경우, 404 Not Found 응답을 반환한다.")
+        @Test
+        void nonExistentMember_returnsNotFound() {
+            // arrange - 로그인 헤더에 존재하지 않는 ID 설정
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-Loopers-LoginId", "unknown99");
+            headers.set("X-Loopers-LoginPw", "Test1234!");
+
+            // act
+            ParameterizedTypeReference<ApiResponse<MemberV1Dto.MeResponse>> responseType = new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<MemberV1Dto.MeResponse>> response =
+                testRestTemplate.exchange(ENDPOINT_ME, HttpMethod.GET, new HttpEntity<>(headers), responseType);
+
+            // assert
+            assertAll(
+                () -> assertTrue(response.getStatusCode().is4xxClientError()),
+                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND)
             );
         }
     }

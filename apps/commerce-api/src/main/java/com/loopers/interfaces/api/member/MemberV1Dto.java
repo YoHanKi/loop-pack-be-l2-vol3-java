@@ -35,4 +35,30 @@ public class MemberV1Dto {
             );
         }
     }
+
+    public record MeResponse(
+        String memberId,
+        String name,
+        String birthDate,
+        String email
+    ) {
+        public static MeResponse from(MemberModel member) {
+            return new MeResponse(
+                member.getMemberId().value(),
+                maskName(member.getName().value()),
+                member.getBirthDate().asString(),
+                member.getEmail().address()
+            );
+        }
+
+        private static String maskName(String name) {
+            if (name == null || name.isEmpty()) {
+                return name;
+            }
+            if (name.length() == 1) {
+                return "*";
+            }
+            return name.substring(0, name.length() - 1) + "*";
+        }
+    }
 }

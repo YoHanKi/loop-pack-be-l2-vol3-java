@@ -41,6 +41,12 @@ public class MemberService {
                 .orElse(null);
     }
 
+    public void validatePassword(String rawPassword, String hashedPassword) {
+        if (!passwordHasher.matches(rawPassword, hashedPassword)) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "비밀번호가 일치하지 않습니다.");
+        }
+    }
+
     private void validateGender(Gender gender) {
         if (gender == null) {
             throw new CoreException(ErrorType.BAD_REQUEST, "성별은 필수입니다.");
