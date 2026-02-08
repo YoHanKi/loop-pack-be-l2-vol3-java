@@ -1,3 +1,10 @@
+---
+name: testing
+description: 테스트 전략 (단위/통합/E2E), 3A 패턴, TestContainers, AssertJ, Mockito. 테스트 작성 및 검증 시 참조
+user-invocable: true
+allowed-tools: Read, Grep, Bash
+---
+
 # 테스트 가이드라인
 
 ## 테스트 전략
@@ -5,27 +12,40 @@
 ### 테스트 피라미드
 ```
         /\
-       /E2E\         (적음)
+       /E2E\         (적음 - 느림)
       /------\
      /통합테스트\      (중간)
     /----------\
-   /  단위테스트  \    (많음)
+   /  단위테스트  \    (많음 - 빠름)
   /--------------\
 ```
 
 ### 테스트 원칙
-1. **독립성**: 각 테스트는 독립적으로 실행 가능해야 함
+1. **독립성**: 각 테스트는 독립적으로 실행 가능
 2. **반복성**: 동일한 입력에 대해 항상 동일한 결과
 3. **자동화**: 수동 개입 없이 자동 실행
-4. **빠른 피드백**: 테스트는 빠르게 실행되어야 함
+4. **빠른 피드백**: 테스트는 빠르게 실행
 5. **명확성**: 테스트 이름과 구조로 의도 파악 가능
 6. **격리성**: 테스트 간 상태 공유 금지
 
 ### 3A 패턴 (Arrange-Act-Assert)
-모든 테스트는 3A 원칙을 따릅니다:
-- **Arrange**: 테스트 데이터 및 환경 준비
-- **Act**: 테스트 대상 실행
-- **Assert**: 결과 검증
+```java
+@Test
+void testExample() {
+    // Arrange: 테스트 데이터 및 환경 준비
+    String memberId = "testuser1";
+    String password = "Test1234!";
+
+    // Act: 테스트 대상 실행
+    MemberModel result = memberService.register(memberId, password, /* ... */);
+
+    // Assert: 결과 검증
+    assertThat(result).isNotNull();
+    assertThat(result.getMemberId().value()).isEqualTo(memberId);
+}
+```
+
+---
 
 ## 단위 테스트 (Unit Test)
 
@@ -36,7 +56,7 @@
 
 ### 특징
 - 외부 의존성 없음 (DB, 네트워크 등)
-- 빠른 실행 속도
+- 빠른 실행 속도 (< 100ms)
 - 격리된 환경
 
 ### Value Object 테스트 예시
@@ -56,39 +76,11 @@ class Create {
 
         // assert
         assertThat(result.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST);
-
-        // second arrange
-        String secondMemberId = "validID12345"; // 11자
-
-        // second act
-        CoreException secondResult = assertThrows(CoreException.class, () ->
-                new MemberModel(secondMemberId, "password123"));
-
-        // second assert
-        assertThat(secondResult.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST);
-    }
-
-    @DisplayName("이메일 형식이 xx@yy.zz 형식에 맞지 않으면, User 객체 생성에 실패한다.")
-    @Test
-    void createsMemberModel_whenEmailIsInvalid() {
-        // arrange
-        String invalidEmail = "invalid_email";
-
-        // act
-        CoreException result = assertThrows(CoreException.class, () ->
-                new MemberModel("validID1", "password123", invalidEmail));
-
-        // assert
-        assertThat(result.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST);
     }
 }
 ```
 
-### 테스트 구조
-- `@Nested`: 관련 테스트 그룹화
-- `@DisplayName`: 한글로 명확한 의도 표현
-- `assertThrows`: 예외 검증
-- `assertThat`: AssertJ 유창한 assertion
+---
 
 ## 통합 테스트 (Integration Test)
 
@@ -143,7 +135,7 @@ class MemberServiceIntegrationTest {
         void testUserSave() {
             // arrange & act
             MemberModel savedMember = memberService.register(
-                VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, 
+                VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL,
                 VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER
             );
 
@@ -156,44 +148,12 @@ class MemberServiceIntegrationTest {
                 () -> assertThat(savedMember.getId()).isNotNull(),
                 () -> assertThat(savedMember.getMemberId().value()).isEqualTo(VALID_MEMBER_ID),
                 () -> assertThat(savedMember.getEmail().address()).isEqualTo(VALID_EMAIL),
-                () -> assertThat(savedMember.getBirthDate().asString()).isEqualTo(VALID_BIRTH_DATE),
-                () -> assertThat(savedMember.getName().value()).isEqualTo(VALID_NAME),
-                () -> assertThat(savedMember.getGender()).isEqualTo(VALID_GENDER),
-                // 비밀번호가 암호화되어 저장되었는지 검증
-                () -> assertThat(savedMember.getPassword()).isNotEqualTo(VALID_PASSWORD),
                 () -> assertThat(passwordHasher.matches(VALID_PASSWORD, savedMember.getPassword())).isTrue()
             );
 
             // DB에서 직접 조회하여 검증
             MemberModel foundMember = memberJpaRepository.findById(savedMember.getId()).orElseThrow();
-            assertAll(
-                () -> assertThat(foundMember.getMemberId().value()).isEqualTo(VALID_MEMBER_ID),
-                () -> assertThat(foundMember.getEmail().address()).isEqualTo(VALID_EMAIL),
-                () -> assertThat(passwordHasher.matches(VALID_PASSWORD, foundMember.getPassword())).isTrue()
-            );
-        }
-
-        @DisplayName("이미 가입된 ID 로 회원가입 시도 시, 실패한다.")
-        @Test
-        void testDuplicateMemberId() {
-            // arrange
-            memberService.register(
-                VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, 
-                VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER
-            );
-
-            // act
-            CoreException exception = assertThrows(CoreException.class,
-                () -> memberService.register(
-                    VALID_MEMBER_ID, VALID_PASSWORD, VALID_EMAIL, 
-                    VALID_BIRTH_DATE, VALID_NAME, VALID_GENDER
-                ));
-            
-            // assert
-            assertAll(
-                () -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST),
-                () -> assertThat(exception.getMessage()).isEqualTo("이미 가입된 ID 입니다.")
-            );
+            assertThat(foundMember.getMemberId().value()).isEqualTo(VALID_MEMBER_ID);
         }
     }
 }
@@ -206,22 +166,7 @@ static class SpyConfig {
     @Bean
     @Primary
     public MemberRepository spyMemberRepository(MemberJpaRepository memberJpaRepository) {
-        return Mockito.spy(new MemberRepository() {
-            @Override
-            public MemberModel save(MemberModel member) {
-                return memberJpaRepository.save(member);
-            }
-
-            @Override
-            public boolean existsByMemberId(MemberId memberId) {
-                return memberJpaRepository.existsByMemberId(memberId);
-            }
-
-            @Override
-            public Optional<MemberModel> findByMemberId(MemberId memberId) {
-                return memberJpaRepository.findByMemberId(memberId);
-            }
-        });
+        return Mockito.spy(new MemberRepositoryImpl(memberJpaRepository));
     }
 }
 ```
@@ -237,19 +182,21 @@ public class DatabaseCleanUp {
     public void truncateAllTables() {
         entityManager.flush();
         entityManager.createNativeQuery("SET FOREIGN_KEY_CHECKS = 0").executeUpdate();
-        
+
         List<String> tableNames = entityManager.createNativeQuery(
             "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE()"
         ).getResultList();
-        
+
         for (String tableName : tableNames) {
             entityManager.createNativeQuery("TRUNCATE TABLE " + tableName).executeUpdate();
         }
-        
+
         entityManager.createNativeQuery("SET FOREIGN_KEY_CHECKS = 1").executeUpdate();
     }
 }
 ```
+
+---
 
 ## E2E 테스트 (End-to-End Test)
 
@@ -272,9 +219,6 @@ public class MemberV1ApiE2ETest {
 
     @Autowired
     private TestRestTemplate testRestTemplate;
-
-    @Autowired
-    private MemberRepository memberRepository;
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
@@ -301,13 +245,13 @@ public class MemberV1ApiE2ETest {
             );
 
             // act
-            ParameterizedTypeReference<ApiResponse<MemberV1Dto.MemberResponse>> responseType = 
+            ParameterizedTypeReference<ApiResponse<MemberV1Dto.MemberResponse>> responseType =
                 new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<MemberV1Dto.MemberResponse>> response =
                 testRestTemplate.exchange(
-                    ENDPOINT_REGISTER, 
-                    HttpMethod.POST, 
-                    new HttpEntity<>(request), 
+                    ENDPOINT_REGISTER,
+                    HttpMethod.POST,
+                    new HttpEntity<>(request),
                     responseType
                 );
 
@@ -315,95 +259,15 @@ public class MemberV1ApiE2ETest {
             assertAll(
                 () -> assertTrue(response.getStatusCode().is2xxSuccessful()),
                 () -> assertThat(response.getBody()).isNotNull(),
-                () -> assertThat(response.getBody().data()).isNotNull(),
-                () -> assertThat(response.getBody().data().id()).isNotNull(),
                 () -> assertThat(response.getBody().data().memberId()).isEqualTo("testuser1"),
-                () -> assertThat(response.getBody().data().email()).isEqualTo("test@example.com"),
-                () -> assertThat(response.getBody().data().birthDate()).isEqualTo("1995-05-20"),
-                () -> assertThat(response.getBody().data().name()).isEqualTo("테스트유저"),
-                () -> assertThat(response.getBody().data().gender()).isEqualTo(Gender.MALE)
-            );
-        }
-
-        @DisplayName("회원 가입 시에 성별이 없을 경우, 400 Bad Request 응답을 반환한다.")
-        @Test
-        void missingGender_returnsBadRequest() {
-            // arrange
-            MemberV1Dto.RegisterRequest request = new MemberV1Dto.RegisterRequest(
-                "testuser2",
-                "Test1234!",
-                "test2@example.com",
-                "1995-05-20",
-                "테스트유저2",
-                null  // gender가 null
-            );
-
-            // act
-            ParameterizedTypeReference<ApiResponse<MemberV1Dto.MemberResponse>> responseType = 
-                new ParameterizedTypeReference<>() {};
-            ResponseEntity<ApiResponse<MemberV1Dto.MemberResponse>> response =
-                testRestTemplate.exchange(
-                    ENDPOINT_REGISTER, 
-                    HttpMethod.POST, 
-                    new HttpEntity<>(request), 
-                    responseType
-                );
-
-            // assert
-            assertAll(
-                () -> assertTrue(response.getStatusCode().is4xxClientError(),
-                    "Expected 4xx status but got: " + response.getStatusCode()),
-                () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST)
+                () -> assertThat(response.getBody().data().email()).isEqualTo("test@example.com")
             );
         }
     }
 }
 ```
 
-## 테스트 데이터 생성
-
-### 상수 활용
-```java
-private static final String VALID_MEMBER_ID = "testuser1";
-private static final String VALID_PASSWORD = "Test1234!";
-private static final String VALID_EMAIL = "test@example.com";
-```
-
-### Instancio 활용 (복잡한 객체)
-```java
-@Test
-void testWithInstancio() {
-    // arrange
-    MemberModel member = Instancio.of(MemberModel.class)
-        .set(field(MemberModel::getMemberId), new MemberId("testuser1"))
-        .set(field(MemberModel::getEmail), new Email("test@example.com"))
-        .create();
-    
-    // act & assert
-}
-```
-
-## 테스트 어노테이션
-
-### 클래스 레벨
-- `@SpringBootTest`: 전체 Spring Context 로드 (통합/E2E)
-- `@WebMvcTest`: Controller 레이어만 테스트
-- `@DataJpaTest`: JPA Repository 테스트
-- `@TestConfiguration`: 테스트용 Bean 설정
-
-### 메서드 레벨
-- `@Test`: 일반 테스트
-- `@ParameterizedTest`: 파라미터화된 테스트
-- `@RepeatedTest`: 반복 테스트
-- `@BeforeEach`: 각 테스트 전 실행
-- `@AfterEach`: 각 테스트 후 실행
-- `@DisplayName`: 테스트 설명 (한글 권장)
-- `@Nested`: 테스트 그룹화
-
-### 조건부 실행
-- `@EnabledIf`: 조건부 활성화
-- `@DisabledIf`: 조건부 비활성화
-- `@EnabledOnOs`: 특정 OS에서만 실행
+---
 
 ## Assertion 라이브러리
 
@@ -411,7 +275,6 @@ void testWithInstancio() {
 ```java
 // 단일 검증
 assertThat(member.getMemberId().value()).isEqualTo("testuser1");
-assertThat(member.getEmail().address()).isEqualTo("test@example.com");
 
 // 다중 검증
 assertAll(
@@ -421,7 +284,7 @@ assertAll(
 );
 
 // 예외 검증
-CoreException exception = assertThrows(CoreException.class, 
+CoreException exception = assertThrows(CoreException.class,
     () -> new MemberId("invalid!"));
 assertThat(exception.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST);
 
@@ -432,24 +295,7 @@ assertThat(members)
     .containsExactly(memberId1, memberId2, memberId3);
 ```
 
-### JUnit Assertions
-```java
-// 기본 검증
-assertEquals(expected, actual);
-assertNotNull(object);
-assertTrue(condition);
-
-// 예외 검증
-assertThrows(CoreException.class, () -> {
-    // 예외 발생 코드
-});
-
-// 다중 검증
-assertAll(
-    () -> assertEquals(expected1, actual1),
-    () -> assertEquals(expected2, actual2)
-);
-```
+---
 
 ## Mock 사용
 
@@ -493,6 +339,8 @@ void testWithSpy() {
 }
 ```
 
+---
+
 ## 테스트 격리
 
 ### @AfterEach로 데이터 정리
@@ -504,10 +352,7 @@ void tearDown() {
 }
 ```
 
-### @DirtiesContext (비권장 - 느림)
-```java
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
-```
+---
 
 ## 테스트 실행
 
@@ -522,24 +367,13 @@ void tearDown() {
 # 특정 테스트 클래스
 ./gradlew test --tests MemberServiceIntegrationTest
 
-# 특정 테스트 메서드
-./gradlew test --tests MemberServiceIntegrationTest.testUserSave
-
-# 병렬 실행 비활성화 (기본 설정)
-maxParallelForks = 1
-```
-
-### 커버리지 리포트
-```bash
+# 커버리지 리포트
 ./gradlew test jacocoTestReport
 ```
 
-## 테스트 네이밍
+---
 
-### 메서드 네이밍 패턴
-1. **Given-When-Then**: `givenValidMemberId_whenRegister_thenSuccess`
-2. **Should-When**: `shouldThrowException_whenInvalidEmail`
-3. **한글 @DisplayName**: "회원 가입이 성공할 경우, 생성된 유저 정보를 응답으로 반환한다."
+## 테스트 네이밍
 
 ### 권장: @DisplayName + 간단한 메서드명
 ```java
@@ -549,6 +383,8 @@ void successfulRegistration_returnsCreatedUserInfo() {
     // ...
 }
 ```
+
+---
 
 ## 테스트 작성 체크리스트
 
@@ -572,6 +408,8 @@ void successfulRegistration_returnsCreatedUserInfo() {
 - [ ] 전체 시나리오 검증
 - [ ] HTTP 상태 코드 확인
 - [ ] 응답 데이터 검증
+
+---
 
 ## 금지 사항
 

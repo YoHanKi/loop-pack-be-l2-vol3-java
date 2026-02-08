@@ -1,83 +1,34 @@
+---
+name: coding-standards
+description: 네이밍 규칙, 타입 사용 패턴 (Entity/VO/DTO), 의존성 주입, 예외 처리, JPA Converter, 트랜잭션. 코드 작성 시 참조
+user-invocable: true
+allowed-tools: Read, Grep
+---
+
 # 코딩 표준
 
 ## 네이밍 규칙
 
 ### 클래스 및 인터페이스
 
-#### Entity (도메인 모델)
-- **패턴**: `{Domain}Model`
-- **예시**: `MemberModel`, `OrderModel`, `ProductModel`
-- **타입**: `class` (가변 상태 관리)
-- **위치**: `domain.{domain}`
+| 타입 | 패턴 | 예시 | 위치 |
+|------|------|------|------|
+| Entity | `{Domain}Model` | `MemberModel`, `OrderModel` | `domain.{domain}` |
+| Value Object | `{Concept}` | `MemberId`, `Email`, `BirthDate` | `domain.{domain}` |
+| Reader | `{Domain}Reader` | `MemberReader` | `domain.{domain}` |
+| Service | `{Domain}Service` | `MemberService` | `domain.{domain}` |
+| Repository Interface | `{Domain}Repository` | `MemberRepository` | `domain.{domain}` |
+| Repository Impl | `{Domain}RepositoryImpl` | `MemberRepositoryImpl` | `infrastructure.{domain}` |
+| JPA Repository | `{Domain}JpaRepository` | `MemberJpaRepository` | `infrastructure.{domain}` |
+| Controller | `{Domain}V{version}Controller` | `MemberV1Controller` | `interfaces.api.{domain}` |
+| API Spec | `{Domain}V{version}ApiSpec` | `MemberV1ApiSpec` | `interfaces.api.{domain}` |
+| DTO | `{Domain}V{version}Dto` | `MemberV1Dto` | `interfaces.api.{domain}` |
+| Facade | `{Domain}Facade` | `MemberFacade` | `application.{domain}` |
+| Info | `{Domain}Info` | `MemberInfo` | `application.{domain}` |
+| Exception | `{Concept}Exception` | `CoreException` | `support.error` |
+| Converter | `{ValueObject}Converter` | `MemberIdConverter` | `infrastructure.jpa.converter` |
 
-#### Value Object
-- **패턴**: `{Concept}` (접미사 없음)
-- **예시**: `MemberId`, `Email`, `BirthDate`, `Name`, `Money`
-- **타입**: `record` (불변 객체)
-- **위치**: `domain.{domain}`
-
-#### Reader (읽기 전용 컴포넌트)
-- **패턴**: `{Domain}Reader`
-- **예시**: `MemberReader`, `OrderReader`, `ProductReader`
-- **위치**: `domain.{domain}`
-
-#### Service
-- **패턴**: `{Domain}Service`
-- **예시**: `MemberService`, `OrderService`, `PaymentService`
-- **위치**: `domain.{domain}`
-
-#### Repository Interface
-- **패턴**: `{Domain}Repository`
-- **예시**: `MemberRepository`, `OrderRepository`
-- **위치**: `domain.{domain}`
-
-#### Repository Implementation
-- **패턴**: `{Domain}RepositoryImpl`
-- **예시**: `MemberRepositoryImpl`, `OrderRepositoryImpl`
-- **위치**: `infrastructure.{domain}`
-
-#### JPA Repository
-- **패턴**: `{Domain}JpaRepository`
-- **예시**: `MemberJpaRepository`, `OrderJpaRepository`
-- **위치**: `infrastructure.{domain}`
-
-#### Controller
-- **패턴**: `{Domain}V{version}Controller`
-- **예시**: `MemberV1Controller`, `OrderV2Controller`
-- **위치**: `interfaces.api.{domain}`
-
-#### API Spec (Swagger)
-- **패턴**: `{Domain}V{version}ApiSpec`
-- **예시**: `MemberV1ApiSpec`, `OrderV2ApiSpec`
-- **위치**: `interfaces.api.{domain}`
-
-#### DTO
-- **패턴**: `{Domain}V{version}Dto` (내부 클래스로 Request/Response 정의)
-- **예시**: `MemberV1Dto.RegisterRequest`, `MemberV1Dto.MemberResponse`
-- **타입**: `record` (불변 DTO)
-- **위치**: `interfaces.api.{domain}`
-
-#### Facade
-- **패턴**: `{Domain}Facade`
-- **예시**: `MemberFacade`, `OrderFacade`
-- **위치**: `application.{domain}`
-
-#### Info (응용 계층 DTO)
-- **패턴**: `{Domain}Info`
-- **예시**: `MemberInfo`, `OrderInfo`
-- **위치**: `application.{domain}`
-
-#### Exception
-- **패턴**: `{Concept}Exception`
-- **예시**: `CoreException`, `BusinessException`
-- **위치**: `support.error`
-
-#### Converter (JPA)
-- **패턴**: `{ValueObject}Converter`
-- **예시**: `MemberIdConverter`, `EmailConverter`, `BirthDateConverter`
-- **위치**: `infrastructure.jpa.converter`
-
-### 메서드
+### 메서드 네이밍
 
 #### Repository
 - **조회**: `findBy{Condition}`, `findAllBy{Condition}`
@@ -87,30 +38,17 @@
 - **카운트**: `countBy{Condition}`
 
 #### Service
-- **비즈니스 로직**: 도메인 용어 사용
-  - `register` (회원 가입)
-  - `getMemberByMemberId` (회원 조회)
-  - `updateProfile` (프로필 수정)
-  - `withdraw` (회원 탈퇴)
+- 도메인 용어 사용: `register`, `getMemberByMemberId`, `updateProfile`, `withdraw`
 
 #### Controller
-- **HTTP 메서드 매핑**: RESTful 원칙
-  - `GET`: 조회
-  - `POST`: 생성
-  - `PUT`: 전체 수정
-  - `PATCH`: 부분 수정
-  - `DELETE`: 삭제
+- RESTful 원칙: GET (조회), POST (생성), PUT (전체 수정), PATCH (부분 수정), DELETE (삭제)
 
-### 변수
-- **camelCase** 사용
-- **의미 있는 이름** 사용 (약어 지양)
-- **boolean**: `is`, `has`, `can` 접두사
-  - 예: `isDeleted`, `hasPermission`, `canAccess`
+### 변수 및 상수
+- **변수**: `camelCase` (예: `memberId`, `rawPassword`)
+- **boolean**: `is`, `has`, `can` 접두사 (예: `isDeleted`, `hasPermission`)
+- **상수**: `UPPER_SNAKE_CASE` + `static final` (예: `MAX_RETRY_COUNT`, `API_VERSION`)
 
-### 상수
-- **UPPER_SNAKE_CASE** 사용
-- **static final** 선언
-- 예: `MAX_RETRY_COUNT`, `DEFAULT_TIMEOUT`, `API_VERSION`
+---
 
 ## 타입 사용 규칙
 
@@ -126,7 +64,7 @@ public record MemberId(String value) {
         value = value.trim();
 
         if (!PATTERN.matcher(value).matches()) {
-            throw new CoreException(ErrorType.BAD_REQUEST, 
+            throw new CoreException(ErrorType.BAD_REQUEST,
                 "memberId는 영문+숫자, 1~10자로 이루어져야 합니다: " + value);
         }
     }
@@ -138,6 +76,8 @@ public record MemberId(String value) {
 - Compact Constructor에서 유효성 검증
 - 비즈니스 규칙 캡슐화
 - null-safety 보장
+
+---
 
 ### DTO (record)
 ```java
@@ -179,6 +119,8 @@ public class MemberV1Dto {
 - 정적 팩토리 메서드 (`from`, `of`) 제공
 - 내부 클래스로 Request/Response 그룹화
 
+---
+
 ### Entity (class)
 ```java
 @Entity
@@ -194,17 +136,22 @@ public class MemberModel extends BaseEntity {
     @Column(nullable = false)
     private String password;
 
-    @Getter
-    @Convert(converter = EmailConverter.class)
-    @Column(length = 100)
-    private Email email;
-
     protected MemberModel() {}
 
     public MemberModel(String memberId, String password, String email) {
         this.memberId = new MemberId(memberId);
         this.password = password;
         this.email = new Email(email);
+    }
+
+    public static MemberModel create(String memberId, String rawPassword, String email,
+                                      String birthDate, String name, Gender gender,
+                                      PasswordHasher passwordHasher) {
+        validateRawPassword(rawPassword);
+        validatePasswordNotContainsBirthDate(rawPassword, birthDate);
+        validateGender(gender);
+        String hashedPassword = passwordHasher.hash(rawPassword);
+        return new MemberModel(memberId, hashedPassword, email, birthDate, name, gender);
     }
 }
 ```
@@ -219,6 +166,8 @@ public class MemberModel extends BaseEntity {
 - 정적 팩토리 메서드 `create()`로 생성 시 검증 로직 캡슐화
 - 도메인 행위 메서드 (예: `matchesPassword()`) 제공
 
+---
+
 ## 의존성 주입
 
 ### 생성자 주입 (권장)
@@ -228,7 +177,7 @@ public class MemberModel extends BaseEntity {
 public class MemberService {
     private final MemberRepository memberRepository;
     private final PasswordHasher passwordHasher;
-    
+
     // 비즈니스 로직
 }
 ```
@@ -244,6 +193,8 @@ public class MemberService {
 @Autowired
 private MemberRepository memberRepository;
 ```
+
+---
 
 ## 예외 처리
 
@@ -280,6 +231,8 @@ public enum ErrorType {
 - `CoreException` → 비즈니스 예외
 - `MethodArgumentNotValidException` → 검증 실패
 - `Throwable` → 예상치 못한 예외
+
+---
 
 ## API 응답 구조
 
@@ -321,13 +274,9 @@ public ApiResponse<MemberV1Dto.MemberResponse> register(@Valid @RequestBody Memb
 }
 ```
 
-## JPA 관련
+---
 
-### BaseEntity
-- 모든 Entity는 `BaseEntity` 상속
-- `id`, `createdAt`, `updatedAt`, `deletedAt` 자동 관리
-- Soft Delete 지원 (`delete()`, `restore()`)
-- `guard()` 메서드로 유효성 검증 (PrePersist, PreUpdate)
+## JPA 관련
 
 ### JPA Converter
 ```java
@@ -358,6 +307,8 @@ public class EmailConverter implements AttributeConverter<Email, String> {
 private Email email;
 ```
 
+---
+
 ## 트랜잭션
 
 ### @Transactional 사용
@@ -383,6 +334,8 @@ public class MemberService {
 - 읽기 전용: `@Transactional(readOnly = true)`
 - 쓰기 작업: `@Transactional`
 - Repository 계층에는 적용하지 않음 (Service에서 관리)
+
+---
 
 ## Null Safety
 
@@ -411,6 +364,8 @@ public record Email(String address) {
 }
 ```
 
+---
+
 ## 코드 스타일
 
 ### Import 순서
@@ -433,6 +388,8 @@ public record Email(String address) {
 - `@RequiredArgsConstructor`: Service, Controller
 - `@Slf4j`: 로깅이 필요한 클래스
 - `@Builder`: 복잡한 객체 생성 (선택적)
+
+---
 
 ## 금지 사항
 
