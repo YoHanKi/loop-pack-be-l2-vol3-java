@@ -146,7 +146,8 @@ description: |
 - 01-requirements.md: 시나리오/기능/유스케이스/Decision Log/예외/정합성 규칙
 - 02-sequence-diagrams.md: 검증 목적 포함 시퀀스 2개 이상
 - 03-class-diagram.md: 책임/경계/불변 규칙 중심 모델
-- 04-erd.md: ERD + 제약/인덱스 후보 + 상태/삭제 정책
+- 04-erd.md: ERD + 제약 + 상태/삭제 정책 (인덱스, 트리거는 제외), DDL 작성 시 FK는 작성하지 않는다.
+  - 트리거, 프로시저 등 DB 레벨 로직은 문서화하지 않는다.
 
 ---
 
@@ -154,3 +155,4 @@ description: |
 - 설계 리뷰 톤.
 - 정답 단정 금지. 선택지와 trade-off를 함께 제시한다.
 - "결정 필요"를 숨기지 않는다.
+- 
