@@ -30,37 +30,24 @@ sequenceDiagram
     participant Facade as OrderFacade
     participant ProductReader as ProductReader
     participant OrderService as OrderService
-    participant ProductRepo as ProductRepository
-    participant OrderRepo as OrderRepository
-    participant DB as Database
 
     Customer->>Controller: POST /api/v1/orders<br/>{items: [{productId, quantity}]}
-    Controller->>Controller: 인증 검증 (헤더)
     Controller->>Facade: createOrder(userId, items)
 
     activate Facade
     Note over Facade: @Transactional 시작
 
     %% 입력 검증
-    Facade->>Facade: 중복 productId 합산
+    Facade->>Facade: 중복 상품 합산
 
     %% 상품 존재 확인
-    loop 각 productId
+    loop 각 상품
         Facade->>ProductReader: getOrThrow(productId)
-        ProductReader->>DB: SELECT * FROM product<br/>WHERE id=? AND deleted_at IS NULL
-        DB-->>ProductReader: Product
         ProductReader-->>Facade: ProductInfo
     end
 
-    %% 재고 차감 (정렬 후)
-    Facade->>Facade: productId 오름차순 정렬
-
     loop 각 항목 (정렬된 순서)
-        Facade->>ProductRepo: decreaseStock(productId, quantity)
-        ProductRepo->>DB: UPDATE product<br/>SET stock_qty = stock_qty - ?<br/>WHERE id=? AND stock_qty >= ?
-        DB-->>ProductRepo: affected rows
         alt affected rows = 0
-            ProductRepo-->>Facade: StockInsufficientException
             Facade-->>Controller: 409 Conflict
             Controller-->>Customer: 409 Conflict<br/>{재고 부족}
         end
@@ -68,17 +55,6 @@ sequenceDiagram
 
     %% 주문 저장
     Facade->>OrderService: createOrder(userId, orderItems)
-    OrderService->>OrderService: calculate totalAmount
-    OrderService->>OrderRepo: save(OrderModel)
-    OrderRepo->>DB: INSERT INTO orders<br/>(user_id, total_amount, status, ordered_at)
-    DB-->>OrderRepo: orderId
-
-    %% 주문 항목 스냅샷 저장
-    loop 각 항목
-        OrderService->>OrderRepo: saveItem(orderId, snapshot)
-        OrderRepo->>DB: INSERT INTO order_item<br/>(order_id, product_id, product_name,<br/>brand_name, unit_price, quantity, line_amount)
-        DB-->>OrderRepo: itemId
-    end
 
     OrderService-->>Facade: OrderInfo
 
@@ -113,29 +89,25 @@ sequenceDiagram
     actor Customer
     participant Controller as OrderV1Controller
     participant Facade as OrderFacade
-    participant OrderReader as OrderReader
     participant OrderService as OrderService
-    participant ProductRepo as ProductRepository
-    participant OrderRepo as OrderRepository
-    participant DB as Database
+    participant OrderReader as OrderReader
 
     Customer->>Controller: PATCH /api/v1/orders/{orderId}/cancel
-    Controller->>Controller: 인증 검증 (헤더)
     Controller->>Facade: cancelOrder(userId, orderId)
 
     activate Facade
     Note over Facade: @Transactional 시작
 
     %% 주문 조회
-    Facade->>OrderReader: getOrThrow(orderId)
-    OrderReader->>DB: SELECT * FROM orders WHERE id=?
-    DB-->>OrderReader: OrderModel
-    OrderReader-->>Facade: OrderInfo
+    Facade->>OrderService: validateExistence(orderId)
+    OrderService->>OrderReader: getOrThrow(orderId)
+    OrderReader-->>OrderService: OrderInfo
 
     %% 소유권 확인
-    Facade->>Facade: validate owner<br/>(order.userId == userId)
-    alt owner mismatch
-        Facade-->>Controller: ForbiddenException
+    OrderService->>OrderService: validate owner<br/>(order.userId == userId)
+    alt 소유권 확인
+        OrderService-->>Facade: CoreException<br/>(403 Forbidden)
+        Facade-->>Controller: CoreException<br/>(403 Forbidden)
         Controller-->>Customer: 403 Forbidden
     end
 
@@ -154,20 +126,11 @@ sequenceDiagram
 
     %% 상태 전이
     Facade->>OrderService: cancel(orderId)
-    OrderService->>OrderRepo: updateStatus(orderId, CANCELED)
-    OrderRepo->>DB: UPDATE orders<br/>SET status='CANCELED', canceled_at=NOW()<br/>WHERE id=?
-    DB-->>OrderRepo: OK
-
-    %% 주문 항목 조회
-    OrderService->>OrderRepo: findItems(orderId)
-    OrderRepo->>DB: SELECT * FROM order_item<br/>WHERE order_id=?
-    DB-->>OrderRepo: List<OrderItem>
+    OrderService->>OrderService: updateStatus(orderId, CANCELED)<br/>AND findItems(orderId)
 
     %% 재고 복구
     loop 각 항목
-        OrderService->>ProductRepo: increaseStock(productId, quantity)
-        ProductRepo->>DB: UPDATE product<br/>SET stock_qty = stock_qty + ?<br/>WHERE id=?
-        DB-->>ProductRepo: OK
+        OrderService->>OrderService: increaseStock(productId, quantity)
     end
 
     OrderService-->>Facade: OrderInfo (CANCELED)
@@ -196,46 +159,37 @@ sequenceDiagram
 3. 상품 존재 확인 흐름
 을 검증한다.
 
-### 시퀀스 다이어그램
+### 시퀀스 다이어그램(좋아요 추가)
 
 ```mermaid
 sequenceDiagram
     actor Customer
     participant Controller as LikeV1Controller
     participant Facade as LikeFacade
-    participant ProductReader as ProductReader
     participant LikeService as LikeService
+    participant ProductReader as ProductReader
     participant LikeRepo as LikeRepository
-    participant DB as Database
-
-    %% 좋아요 추가
-    Note over Customer, DB: POST /api/v1/products/{productId}/likes
 
     Customer->>Controller: POST /likes
-    Controller->>Controller: 인증 검증 (헤더)
     Controller->>Facade: addLike(userId, productId)
 
     activate Facade
     Note over Facade: @Transactional 시작
 
-    %% 상품 존재 확인
-    Facade->>ProductReader: getOrThrow(productId)
-    ProductReader->>DB: SELECT * FROM product<br/>WHERE id=? AND deleted_at IS NULL
-    DB-->>ProductReader: Product
-    ProductReader-->>Facade: ProductInfo
-
     %% 좋아요 저장
     Facade->>LikeService: addLike(userId, productId)
+    
+    %% 상품 존재 확인
+    LikeService->>ProductReader: getOrThrow(productId)
+    ProductReader-->>LikeService: ProductInfo
+    
     LikeService->>LikeRepo: save(LikeModel)
-    LikeRepo->>DB: INSERT INTO like<br/>(user_id, product_id, created_at)
 
     alt UNIQUE 제약 위반
-        DB-->>LikeRepo: DuplicateKeyException
         LikeRepo-->>LikeService: (catch)
         Note over LikeService: 멱등 처리: 이미 존재함
         LikeService-->>Facade: LikeInfo (기존)
     else 성공
-        DB-->>LikeRepo: likeId
         LikeRepo-->>LikeService: LikeInfo (새로 생성)
         LikeService-->>Facade: LikeInfo
     end
@@ -247,6 +201,7 @@ sequenceDiagram
     Controller-->>Customer: 201 Created (또는 200 OK)
 ```
 
+### 시퀀스 다이어그램(좋아요 취소)
 ```mermaid
 sequenceDiagram
     actor Customer
@@ -255,13 +210,8 @@ sequenceDiagram
     participant ProductReader as ProductReader
     participant LikeService as LikeService
     participant LikeRepo as LikeRepository
-    participant DB as Database
-
-    %% 좋아요 취소
-    Note over Customer, DB: DELETE /api/v1/products/{productId}/likes
 
     Customer->>Controller: DELETE /likes
-    Controller->>Controller: 인증 검증 (헤더)
     Controller->>Facade: removeLike(userId, productId)
 
     activate Facade
@@ -270,11 +220,9 @@ sequenceDiagram
     %% 좋아요 삭제
     Facade->>LikeService: removeLike(userId, productId)
     LikeService->>LikeRepo: delete(userId, productId)
-    LikeRepo->>DB: DELETE FROM like<br/>WHERE user_id=? AND product_id=?
-    DB-->>LikeRepo: affected rows
 
-    alt affected rows = 0
-        Note over LikeService: 멱등 처리: 없어도 성공
+    alt count(*) == 0
+        Note over LikeService, LikeRepo: 멱등 처리: 없어도 성공
     end
 
     LikeRepo-->>LikeService: void
@@ -310,39 +258,31 @@ sequenceDiagram
 sequenceDiagram
     actor Customer
     participant Controller as ProductV1Controller
-    participant Facade as ProductFacade
+    participant Service as ProductService
     participant ProductReader as ProductReader
     participant ProductRepo as ProductRepository
-    participant DB as Database
 
     Customer->>Controller: GET /api/v1/products<br/>?brandId=&sort=likes_desc&page=0&size=20
-    Controller->>Controller: 인증 검증 (선택)
-    Controller->>Facade: getProducts(criteria)
-
-    activate Facade
+    Controller->>Service: getProducts(criteria)
 
     %% 조회
-    Facade->>ProductReader: findProducts(criteria)
+    Service->>ProductReader: findProducts(criteria)
     ProductReader->>ProductRepo: findAll(brandId, sort, pageable)
 
-    alt sort = likes_desc (Phase 1: COUNT)
-        ProductRepo->>DB: SELECT p.*, <br/>(SELECT COUNT(*) FROM like WHERE product_id=p.id) AS like_count<br/>FROM product p<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY like_count DESC<br/>LIMIT ? OFFSET ?
-    else sort = likes_desc (Phase 2: like_count 컬럼)
-        ProductRepo->>DB: SELECT *<br/>FROM product<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY like_count DESC<br/>LIMIT ? OFFSET ?
-    else sort = latest
-        ProductRepo->>DB: SELECT *<br/>FROM product<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY updated_at DESC<br/>LIMIT ? OFFSET ?
-    else sort = price_asc
-        ProductRepo->>DB: SELECT *<br/>FROM product<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY price ASC<br/>LIMIT ? OFFSET ?
-    end
+%%    alt sort = likes_desc (Phase 1: COUNT)
+%%        ProductRepo->>DB: SELECT p.*, <br/>(SELECT COUNT(*) FROM like WHERE product_id=p.id) AS like_count<br/>FROM product p<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY like_count DESC<br/>LIMIT ? OFFSET ?
+%%    else sort = likes_desc (Phase 2: like_count 컬럼)
+%%        ProductRepo->>DB: SELECT *<br/>FROM product<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY like_count DESC<br/>LIMIT ? OFFSET ?
+%%    else sort = latest
+%%        ProductRepo->>DB: SELECT *<br/>FROM product<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY updated_at DESC<br/>LIMIT ? OFFSET ?
+%%    else sort = price_asc
+%%        ProductRepo->>DB: SELECT *<br/>FROM product<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY price ASC<br/>LIMIT ? OFFSET ?
+%%    end
 
-    DB-->>ProductRepo: List<Product>
     ProductRepo-->>ProductReader: List<ProductModel>
-    ProductReader->>ProductReader: toProductInfoList()
-    ProductReader-->>Facade: List<ProductInfo>
+    ProductReader-->>Service: List<ProductInfo>
 
-    deactivate Facade
-
-    Facade-->>Controller: List<ProductInfo>
+    Service-->>Controller: List<ProductInfo>
     Controller-->>Customer: 200 OK<br/>{products: [...], page, size}
 ```
 
