@@ -6,7 +6,6 @@
 
 **레이어 구조**:
 - **Interfaces Layer**: Controller
-- **Application Layer**: Facade
 - **Domain Layer**: Service, Reader, Model
 - **Infrastructure Layer**: Repository, JpaRepository
 
@@ -27,46 +26,44 @@
 sequenceDiagram
     actor Customer
     participant Controller as OrderV1Controller
-    participant Facade as OrderFacade
-    participant ProductReader as ProductReader
     participant OrderService as OrderService
+    participant ProductReader as ProductReader
 
     Customer->>Controller: POST /api/v1/orders<br/>{items: [{productId, quantity}]}
-    Controller->>Facade: createOrder(userId, items)
+    Controller->>OrderService: createOrder(userId, items)
 
-    activate Facade
-    Note over Facade: @Transactional 시작
+    activate OrderService
+    Note over OrderService: @Transactional 시작
 
-    %% 입력 검증
-    Facade->>Facade: 중복 상품 합산
+%% 입력 검증
+    OrderService->>OrderService: 중복 상품 합산
 
-    %% 상품 존재 확인
+%% 상품 존재 확인
     loop 각 상품
-        Facade->>ProductReader: getOrThrow(productId)
-        ProductReader-->>Facade: ProductInfo
+        OrderService->>ProductReader: getOrThrow(productId)
+        ProductReader-->>OrderService: ProductInfo
     end
 
+%% 재고 차감 (정렬된 순서)
     loop 각 항목 (정렬된 순서)
         alt affected rows = 0
-            Facade-->>Controller: 409 Conflict
+            OrderService-->>Controller: 409 Conflict (Stock 부족)
             Controller-->>Customer: 409 Conflict<br/>{재고 부족}
         end
     end
 
-    %% 주문 저장
-    Facade->>OrderService: createOrder(userId, orderItems)
+%% 주문 저장
+    OrderService->>OrderService: createOrderEntityAndSave(userId, orderItems)
+    OrderService-->>Controller: OrderInfo
 
-    OrderService-->>Facade: OrderInfo
+    Note over OrderService: @Transactional 커밋
+    deactivate OrderService
 
-    Note over Facade: @Transactional 커밋
-    deactivate Facade
-
-    Facade-->>Controller: OrderInfo
     Controller-->>Customer: 201 Created<br/>{orderId, status, items}
 ```
 
 ### 해석
-- **트랜잭션 경계**: Facade의 `@Transactional`이 재고 차감부터 주문 저장까지 묶는다. 재고 부족 시 전체 롤백된다.
+- **트랜잭션 경계**: Service의 `@Transactional`이 재고 차감부터 주문 저장까지 묶는다. 재고 부족 시 전체 롤백된다.
 - **동시성 제어**: `UPDATE ... WHERE stock_qty >= ?`로 조건부 원자 업데이트를 수행하며, productId 정렬로 데드락을 완화한다.
 - **책임 분리**: ProductReader는 조회만, ProductRepository는 재고 차감, OrderService는 주문 로직과 스냅샷 저장을 담당한다.
 - **실패 지점**: 재고 부족 시 affected rows=0 감지 후 즉시 예외를 던지고 트랜잭션이 롤백된다.
@@ -88,65 +85,62 @@ sequenceDiagram
 sequenceDiagram
     actor Customer
     participant Controller as OrderV1Controller
-    participant Facade as OrderFacade
     participant OrderService as OrderService
     participant OrderReader as OrderReader
 
     Customer->>Controller: PATCH /api/v1/orders/{orderId}/cancel
-    Controller->>Facade: cancelOrder(userId, orderId)
+    Controller->>OrderService: cancelOrder(userId, orderId)
 
-    activate Facade
-    Note over Facade: @Transactional 시작
+    activate OrderService
+    Note over OrderService: @Transactional 시작
 
     %% 주문 조회
-    Facade->>OrderService: validateExistence(orderId)
     OrderService->>OrderReader: getOrThrow(orderId)
     OrderReader-->>OrderService: OrderInfo
 
     %% 소유권 확인
-    OrderService->>OrderService: validate owner<br/>(order.userId == userId)
-    alt 소유권 확인
-        OrderService-->>Facade: CoreException<br/>(403 Forbidden)
-        Facade-->>Controller: CoreException<br/>(403 Forbidden)
+    OrderService->>OrderService: validateOwner(order.userId == userId)
+    alt owner mismatch
+        OrderService-->>Controller: CoreException (403 Forbidden)
         Controller-->>Customer: 403 Forbidden
-    end
+    else owner ok
 
-    %% 상태 확인
-    Facade->>Facade: validate status<br/>(status == PENDING)
-    alt status != PENDING
+        %% 상태 확인 (멱등 포함)
+        OrderService->>OrderService: validateStatus(order.status)
         alt status == CANCELED
-            Note over Facade: 멱등 성공 처리
-            Facade-->>Controller: OrderInfo (기존)
-            Controller-->>Customer: 200 OK<br/>{already canceled}
-        else status = other
-            Facade-->>Controller: ConflictException
-            Controller-->>Customer: 409 Conflict<br/>{invalid status}
+            Note over OrderService: idempotent success
+            OrderService-->>Controller: OrderInfo (existing)
+            Controller-->>Customer: 200 OK (already canceled)
+        else status != PENDING
+            OrderService-->>Controller: ConflictException (409 invalid status)
+            Controller-->>Customer: 409 Conflict
+        else status == PENDING
+
+            %% 상태 전이 + 아이템 조회
+            OrderService->>OrderService: updateStatusToCanceled(orderId)
+            OrderService->>OrderService: findItems(orderId)
+
+            %% 재고 복구
+            loop each item
+                OrderService->>OrderService: increaseStock(productId, quantity)
+            end
+
+            OrderService-->>Controller: OrderInfo (CANCELED)
+            Controller-->>Customer: 200 OK (canceled)
+
         end
     end
 
-    %% 상태 전이
-    Facade->>OrderService: cancel(orderId)
-    OrderService->>OrderService: updateStatus(orderId, CANCELED)<br/>AND findItems(orderId)
+    Note over OrderService: @Transactional 커밋
+    deactivate OrderService
 
-    %% 재고 복구
-    loop 각 항목
-        OrderService->>OrderService: increaseStock(productId, quantity)
-    end
-
-    OrderService-->>Facade: OrderInfo (CANCELED)
-
-    Note over Facade: @Transactional 커밋
-    deactivate Facade
-
-    Facade-->>Controller: OrderInfo
-    Controller-->>Customer: 200 OK<br/>{orderId, status=CANCELED}
 ```
 
 ### 해석
 - **트랜잭션 경계**: 상태 전이와 재고 복구가 단일 트랜잭션으로 묶여, 부분 성공을 방지한다.
 - **멱등성**: 이미 CANCELED 상태면 200 OK로 성공 처리 (재고 복구 중복 실행 방지).
 - **책임 분리**: OrderReader는 조회+검증, OrderService는 상태 전이+재고 복구 오케스트레이션.
-- **소유권 확인**: Facade에서 userId 일치 여부를 확인하여 타 유저 접근을 차단한다.
+- **소유권 확인**: Service에서 userId 일치 여부를 확인하여 타 유저 접근을 차단한다.
 
 ---
 
@@ -165,40 +159,39 @@ sequenceDiagram
 sequenceDiagram
     actor Customer
     participant Controller as LikeV1Controller
-    participant Facade as LikeFacade
     participant LikeService as LikeService
     participant ProductReader as ProductReader
     participant LikeRepo as LikeRepository
 
-    Customer->>Controller: POST /likes
-    Controller->>Facade: addLike(userId, productId)
+    Customer->>Controller: POST /likes<br/>{productId}
+    Controller->>LikeService: addLike(userId, productId)
 
-    activate Facade
-    Note over Facade: @Transactional 시작
+    activate LikeService
+    Note over LikeService: @Transactional 시작
 
-    %% 좋아요 저장
-    Facade->>LikeService: addLike(userId, productId)
-    
-    %% 상품 존재 확인
+%% 상품 존재 확인
     LikeService->>ProductReader: getOrThrow(productId)
     ProductReader-->>LikeService: ProductInfo
-    
+
+%% 좋아요 저장
     LikeService->>LikeRepo: save(LikeModel)
 
-    alt UNIQUE 제약 위반
-        LikeRepo-->>LikeService: (catch)
-        Note over LikeService: 멱등 처리: 이미 존재함
-        LikeService-->>Facade: LikeInfo (기존)
-    else 성공
-        LikeRepo-->>LikeService: LikeInfo (새로 생성)
-        LikeService-->>Facade: LikeInfo
+    alt unique constraint violation
+        LikeRepo-->>LikeService: DataIntegrityViolationException
+        Note over LikeService: idempotent success (already liked)<br/>기존 Like 조회 or 바로 성공 처리
+        LikeService->>LikeRepo: findByUserIdAndProductId(userId, productId)
+        LikeRepo-->>LikeService: LikeInfo (existing)
+        LikeService-->>Controller: LikeInfo (existing)
+        Controller-->>Customer: 200 OK<br/>{already liked}
+    else inserted
+        LikeRepo-->>LikeService: LikeInfo (new)
+        LikeService-->>Controller: LikeInfo (new)
+        Controller-->>Customer: 201 Created<br/>{likeId, productId}
     end
 
-    Note over Facade: @Transactional 커밋
-    deactivate Facade
+    Note over LikeService: @Transactional 커밋
+    deactivate LikeService
 
-    Facade-->>Controller: LikeInfo
-    Controller-->>Customer: 201 Created (또는 200 OK)
 ```
 
 ### 시퀀스 다이어그램(좋아요 취소)
@@ -206,33 +199,24 @@ sequenceDiagram
 sequenceDiagram
     actor Customer
     participant Controller as LikeV1Controller
-    participant Facade as LikeFacade
-    participant ProductReader as ProductReader
     participant LikeService as LikeService
-    participant LikeRepo as LikeRepository
 
-    Customer->>Controller: DELETE /likes
-    Controller->>Facade: removeLike(userId, productId)
+    Customer->>Controller: DELETE /likes<br/>{productId}
+    Controller->>LikeService: removeLike(userId, productId)
 
-    activate Facade
-    Note over Facade: @Transactional 시작
+    activate LikeService
+    Note over LikeService: @Transactional 시작
 
-    %% 좋아요 삭제
-    Facade->>LikeService: removeLike(userId, productId)
-    LikeService->>LikeRepo: delete(userId, productId)
 
-    alt count(*) == 0
-        Note over LikeService, LikeRepo: 멱등 처리: 없어도 성공
+    alt affectedRows == 0
+        Note over LikeService: idempotent success (already unliked)
     end
 
-    LikeRepo-->>LikeService: void
-    LikeService-->>Facade: void
-
-    Note over Facade: @Transactional 커밋
-    deactivate Facade
-
-    Facade-->>Controller: void
+    LikeService-->>Controller: void
     Controller-->>Customer: 204 No Content
+
+    Note over LikeService: @Transactional 커밋
+    deactivate LikeService
 ```
 
 ### 해석
@@ -258,32 +242,22 @@ sequenceDiagram
 sequenceDiagram
     actor Customer
     participant Controller as ProductV1Controller
-    participant Service as ProductService
+    participant ProductService as ProductService
     participant ProductReader as ProductReader
-    participant ProductRepo as ProductRepository
 
     Customer->>Controller: GET /api/v1/products<br/>?brandId=&sort=likes_desc&page=0&size=20
-    Controller->>Service: getProducts(criteria)
+    Controller->>ProductService: getProducts(criteria)
 
-    %% 조회
-    Service->>ProductReader: findProducts(criteria)
-    ProductReader->>ProductRepo: findAll(brandId, sort, pageable)
+    activate ProductService
+    Note over ProductService: read-only usecase
 
-%%    alt sort = likes_desc (Phase 1: COUNT)
-%%        ProductRepo->>DB: SELECT p.*, <br/>(SELECT COUNT(*) FROM like WHERE product_id=p.id) AS like_count<br/>FROM product p<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY like_count DESC<br/>LIMIT ? OFFSET ?
-%%    else sort = likes_desc (Phase 2: like_count 컬럼)
-%%        ProductRepo->>DB: SELECT *<br/>FROM product<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY like_count DESC<br/>LIMIT ? OFFSET ?
-%%    else sort = latest
-%%        ProductRepo->>DB: SELECT *<br/>FROM product<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY updated_at DESC<br/>LIMIT ? OFFSET ?
-%%    else sort = price_asc
-%%        ProductRepo->>DB: SELECT *<br/>FROM product<br/>WHERE deleted_at IS NULL<br/>AND (brand_id=? OR ? IS NULL)<br/>ORDER BY price ASC<br/>LIMIT ? OFFSET ?
-%%    end
+    ProductService->>ProductReader: findProducts(criteria)
 
-    ProductRepo-->>ProductReader: List<ProductModel>
-    ProductReader-->>Service: List<ProductInfo>
+    ProductService-->>Controller: List<ProductInfo>
+    deactivate ProductService
 
-    Service-->>Controller: List<ProductInfo>
     Controller-->>Customer: 200 OK<br/>{products: [...], page, size}
+
 ```
 
 ### 해석
@@ -301,12 +275,12 @@ sequenceDiagram
 
 ## 다이어그램 요약
 
-| 유스케이스 | 핵심 검증 포인트 | 트랜잭션 범위 |
-|-----------|-----------------|--------------|
-| 주문 생성 | 재고 차감 동시성, 스냅샷 저장 | Facade (@Transactional) |
-| 주문 취소 | 상태 전이, 재고 복구, 멱등성 | Facade (@Transactional) |
-| 좋아요 추가/취소 | UNIQUE 제약, 멱등성 | Facade (@Transactional) |
-| 상품 목록 조회 | Soft Delete 필터, 정렬/집계 성능 | 없음 (읽기 전용) |
+| 유스케이스 | 핵심 검증 포인트 | 트랜잭션 범위                  |
+|-----------|-----------------|--------------------------|
+| 주문 생성 | 재고 차감 동시성, 스냅샷 저장 | Service (@Transactional) |
+| 주문 취소 | 상태 전이, 재고 복구, 멱등성 | Service (@Transactional)  |
+| 좋아요 추가/취소 | UNIQUE 제약, 멱등성 | Service (@Transactional)  |
+| 상품 목록 조회 | Soft Delete 필터, 정렬/집계 성능 | 없음 (읽기 전용)               |
 
 ---
 
