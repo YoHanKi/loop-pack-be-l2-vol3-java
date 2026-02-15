@@ -1,7 +1,7 @@
 package com.loopers.interfaces.api.member;
 
-import com.loopers.domain.member.MemberModel;
-import com.loopers.domain.member.MemberService;
+import com.loopers.application.member.MemberFacade;
+import com.loopers.application.member.MemberInfo;
 import com.loopers.interfaces.api.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,12 +18,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/members")
 public class MemberV1Controller implements MemberV1ApiSpec {
 
-    private final MemberService memberService;
+    private final MemberFacade memberFacade;
 
     @PostMapping("/register")
     @Override
     public ApiResponse<MemberV1Dto.MemberResponse> register(@Valid @RequestBody MemberV1Dto.RegisterRequest request) {
-        MemberModel member = memberService.register(
+        MemberInfo info = memberFacade.register(
             request.memberId(),
             request.password(),
             request.email(),
@@ -32,7 +32,7 @@ public class MemberV1Controller implements MemberV1ApiSpec {
             request.gender()
         );
 
-        MemberV1Dto.MemberResponse response = MemberV1Dto.MemberResponse.from(member);
+        MemberV1Dto.MemberResponse response = MemberV1Dto.MemberResponse.fromInfo(info);
         return ApiResponse.success(response);
     }
 
@@ -42,9 +42,9 @@ public class MemberV1Controller implements MemberV1ApiSpec {
             @RequestHeader("X-Loopers-LoginId") String loginId,
             @RequestHeader("X-Loopers-LoginPw") String loginPw
     ) {
-        MemberModel member = memberService.authenticate(loginId, loginPw);
+        MemberInfo info = memberFacade.authenticate(loginId, loginPw);
 
-        MemberV1Dto.MeResponse response = MemberV1Dto.MeResponse.from(member);
+        MemberV1Dto.MeResponse response = MemberV1Dto.MeResponse.fromInfo(info);
         return ApiResponse.success(response);
     }
 
@@ -55,7 +55,7 @@ public class MemberV1Controller implements MemberV1ApiSpec {
             @RequestHeader("X-Loopers-LoginPw") String loginPw,
             @Valid @RequestBody MemberV1Dto.ChangePasswordRequest request
     ) {
-        memberService.changePassword(loginId, loginPw,
+        memberFacade.changePassword(loginId, loginPw,
                 request.currentPassword(), request.newPassword());
         return ApiResponse.success(null);
     }
