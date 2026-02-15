@@ -1,4 +1,4 @@
-package com.loopers.domain.member;
+package com.loopers.security;
 
 public interface PasswordHasher {
     String hash(String rawPassword);

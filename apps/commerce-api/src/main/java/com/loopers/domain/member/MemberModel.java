@@ -1,11 +1,11 @@
 package com.loopers.domain.member;
 
-
 import com.loopers.domain.BaseEntity;
 import com.loopers.infrastructure.jpa.converter.BirthDateConverter;
 import com.loopers.infrastructure.jpa.converter.EmailConverter;
 import com.loopers.infrastructure.jpa.converter.MemberIdConverter;
 import com.loopers.infrastructure.jpa.converter.NameConverter;
+import com.loopers.security.PasswordHasher;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import jakarta.persistence.*;
