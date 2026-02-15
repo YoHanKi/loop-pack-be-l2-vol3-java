@@ -1,6 +1,10 @@
 package com.loopers.domain.member;
 
 import com.loopers.domain.BaseEntity;
+import com.loopers.domain.member.vo.BirthDate;
+import com.loopers.domain.member.vo.Email;
+import com.loopers.domain.member.vo.MemberId;
+import com.loopers.domain.member.vo.Name;
 import com.loopers.infrastructure.jpa.converter.BirthDateConverter;
 import com.loopers.infrastructure.jpa.converter.EmailConverter;
 import com.loopers.infrastructure.jpa.converter.MemberIdConverter;

@@ -1,6 +1,6 @@
 package com.loopers.infrastructure.member;
 
-import com.loopers.domain.member.MemberId;
+import com.loopers.domain.member.vo.MemberId;
 import com.loopers.domain.member.MemberModel;
 import com.loopers.domain.member.MemberRepository;
 import lombok.RequiredArgsConstructor;
