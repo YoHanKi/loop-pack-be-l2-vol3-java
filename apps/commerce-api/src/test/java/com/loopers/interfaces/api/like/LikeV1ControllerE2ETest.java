@@ -1,0 +1,181 @@
+package com.loopers.interfaces.api.like;
+
+import com.loopers.domain.brand.BrandService;
+import com.loopers.domain.product.ProductService;
+import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.utils.DatabaseCleanUp;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+
+import java.math.BigDecimal;
+
+import static com.loopers.interfaces.api.like.LikeV1Dto.*;
+import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@DisplayName("Like API E2E 테스트")
+class LikeV1ControllerE2ETest {
+
+    @LocalServerPort
+    private int port;
+
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    @Autowired
+    private BrandService brandService;
+
+    @Autowired
+    private ProductService productService;
+
+    @Autowired
+    private DatabaseCleanUp databaseCleanUp;
+
+    private String baseUrl() {
+        return "http://localhost:" + port + "/api/v1/likes";
+    }
+
+    @AfterEach
+    void tearDown() {
+        databaseCleanUp.truncateAllTables();
+    }
+
+    @DisplayName("POST /api/v1/likes")
+    @Nested
+    class AddLike {
+
+        @Test
+        @DisplayName("좋아요 추가 성공 시 201 Created와 생성된 좋아요 정보 반환")
+        void addLike_success_returns201() {
+            // given
+            brandService.createBrand("nike", "Nike");
+            var product = productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
+
+            var request = new AddLikeRequest(1L, "prod1");
+
+            // when
+            var response = restTemplate.postForEntity(
+                    baseUrl(),
+                    request,
+                    ApiResponse.class
+            );
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().success()).isTrue();
+        }
+
+        @Test
+        @DisplayName("중복 좋아요 추가 시 201 Created 반환 (멱등성)")
+        void addLike_duplicate_returns201() {
+            // given
+            brandService.createBrand("nike", "Nike");
+            productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
+
+            var request = new AddLikeRequest(1L, "prod1");
+
+            // when
+            var firstResponse = restTemplate.postForEntity(baseUrl(), request, ApiResponse.class);
+            var secondResponse = restTemplate.postForEntity(baseUrl(), request, ApiResponse.class);
+
+            // then
+            assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+            assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 상품에 좋아요 추가 시 404 Not Found 반환")
+        void addLike_productNotFound_returns404() {
+            // given
+            var request = new AddLikeRequest(1L, "invalid");
+
+            // when
+            var response = restTemplate.postForEntity(
+                    baseUrl(),
+                    request,
+                    ApiResponse.class
+            );
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        }
+    }
+
+    @DisplayName("DELETE /api/v1/likes")
+    @Nested
+    class RemoveLike {
+
+        @Test
+        @DisplayName("좋아요 취소 성공 시 204 No Content 반환")
+        void removeLike_success_returns204() {
+            // given
+            brandService.createBrand("nike", "Nike");
+            productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
+
+            var addRequest = new AddLikeRequest(1L, "prod1");
+            restTemplate.postForEntity(baseUrl(), addRequest, ApiResponse.class);
+
+            var removeRequest = new RemoveLikeRequest(1L, "prod1");
+
+            // when
+            var response = restTemplate.exchange(
+                    baseUrl(),
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(removeRequest),
+                    ApiResponse.class
+            );
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        }
+
+        @Test
+        @DisplayName("좋아요가 없어도 204 No Content 반환 (멱등성)")
+        void removeLike_notExists_returns204() {
+            // given
+            brandService.createBrand("nike", "Nike");
+            productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
+
+            var removeRequest = new RemoveLikeRequest(1L, "prod1");
+
+            // when
+            var response = restTemplate.exchange(
+                    baseUrl(),
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(removeRequest),
+                    ApiResponse.class
+            );
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 상품에 좋아요 취소 시 404 Not Found 반환")
+        void removeLike_productNotFound_returns404() {
+            // given
+            var removeRequest = new RemoveLikeRequest(1L, "invalid");
+
+            // when
+            var response = restTemplate.exchange(
+                    baseUrl(),
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(removeRequest),
+                    ApiResponse.class
+            );
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        }
+    }
+}
