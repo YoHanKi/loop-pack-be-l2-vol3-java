@@ -2,6 +2,7 @@ package com.loopers.domain.product;
 
 import com.loopers.domain.brand.BrandModel;
 import com.loopers.domain.brand.BrandService;
+import com.loopers.domain.like.LikeService;
 import com.loopers.infrastructure.brand.BrandJpaRepository;
 import com.loopers.infrastructure.product.ProductJpaRepository;
 import com.loopers.support.error.CoreException;
@@ -39,6 +40,9 @@ class ProductServiceIntegrationTest {
     private BrandJpaRepository brandJpaRepository;
 
     @Autowired
+    private LikeService likeService;
+
+    @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
     @AfterEach
@@ -68,7 +72,7 @@ class ProductServiceIntegrationTest {
                     () -> assertThat(savedProduct).isNotNull(),
                     () -> assertThat(savedProduct.getId()).isNotNull(),
                     () -> assertThat(savedProduct.getProductId().value()).isEqualTo(productId),
-                    () -> assertThat(savedProduct.getRefBrandId()).isEqualTo(brand.getId()),
+                    () -> assertThat(savedProduct.getRefBrandId().value()).isEqualTo(brand.getId()),
                     () -> assertThat(savedProduct.getProductName().value()).isEqualTo(productName),
                     () -> assertThat(savedProduct.getPrice().value()).isEqualByComparingTo(price.setScale(2)),
                     () -> assertThat(savedProduct.getStockQuantity().value()).isEqualTo(stockQuantity),
@@ -190,7 +194,7 @@ class ProductServiceIntegrationTest {
             // then
             assertThat(nikeProducts.getContent()).hasSize(2);
             assertThat(nikeProducts.getContent())
-                    .allMatch(p -> p.getRefBrandId().equals(nike.getId()));
+                    .allMatch(p -> p.getRefBrandId().value().equals(nike.getId()));
         }
 
         @Test
@@ -258,6 +262,38 @@ class ProductServiceIntegrationTest {
             assertThat(secondPage.getContent()).hasSize(5);
             assertThat(firstPage.getTotalElements()).isEqualTo(15);
             assertThat(firstPage.getTotalPages()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("likes_desc 정렬 (좋아요 많은 순)")
+        void getProducts_sortByLikesDesc() {
+            // given
+            BrandModel brand = brandService.createBrand("nike", "Nike");
+            ProductModel product1 = productService.createProduct("prod1", brand.getBrandId().value(), "Product 1", new BigDecimal("10000"), 10);
+            ProductModel product2 = productService.createProduct("prod2", brand.getBrandId().value(), "Product 2", new BigDecimal("20000"), 20);
+            ProductModel product3 = productService.createProduct("prod3", brand.getBrandId().value(), "Product 3", new BigDecimal("30000"), 30);
+
+            // product2: 좋아요 3개
+            likeService.addLike(1L, "prod2");
+            likeService.addLike(2L, "prod2");
+            likeService.addLike(3L, "prod2");
+
+            // product1: 좋아요 1개
+            likeService.addLike(1L, "prod1");
+
+            // product3: 좋아요 0개
+
+            Pageable pageable = PageRequest.of(0, 10);
+
+            // when
+            Page<ProductModel> products = productService.getProducts(null, "likes_desc", pageable);
+
+            // then
+            assertThat(products.getContent()).hasSize(3);
+            // 좋아요 많은 순: prod2(3) > prod1(1) > prod3(0)
+            assertThat(products.getContent())
+                    .extracting(p -> p.getProductId().value())
+                    .containsExactly("prod2", "prod1", "prod3");
         }
     }
 }

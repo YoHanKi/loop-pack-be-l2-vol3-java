@@ -4,7 +4,6 @@ import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.vo.ProductId;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.TypedQuery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -38,28 +37,14 @@ public class ProductRepositoryImpl implements ProductRepository {
 
     @Override
     public Page<ProductModel> findProducts(Long refBrandId, String sortBy, Pageable pageable) {
-        // JPQL 쿼리 작성
-        StringBuilder jpql = new StringBuilder("SELECT p FROM ProductModel p WHERE p.deletedAt IS NULL");
+        List<ProductModel> products;
 
-        // 브랜드 필터
-        if (refBrandId != null) {
-            jpql.append(" AND p.refBrandId = :refBrandId");
+        // VO 타입 문제로 Native Query 사용
+        if ("likes_desc".equals(sortBy)) {
+            products = findProductsWithLikesCount(refBrandId, pageable);
+        } else {
+            products = findProductsNative(refBrandId, sortBy, pageable);
         }
-
-        // 정렬
-        jpql.append(getSortClause(sortBy));
-
-        // 쿼리 실행
-        TypedQuery<ProductModel> query = entityManager.createQuery(jpql.toString(), ProductModel.class);
-        if (refBrandId != null) {
-            query.setParameter("refBrandId", refBrandId);
-        }
-
-        // 페이징
-        query.setFirstResult((int) pageable.getOffset());
-        query.setMaxResults(pageable.getPageSize());
-
-        List<ProductModel> products = query.getResultList();
 
         // 전체 개수 조회
         long total = countProducts(refBrandId);
@@ -67,31 +52,77 @@ public class ProductRepositoryImpl implements ProductRepository {
         return new PageImpl<>(products, pageable, total);
     }
 
-    private String getSortClause(String sortBy) {
-        if (sortBy == null || "latest".equals(sortBy)) {
-            return " ORDER BY p.updatedAt DESC";
-        } else if ("price_asc".equals(sortBy)) {
-            return " ORDER BY p.price ASC";
-        } else if ("likes_desc".equals(sortBy)) {
-            // TODO: Like 도메인 구현 후 LEFT JOIN + COUNT 서브쿼리로 구현
-            throw new UnsupportedOperationException("likes_desc 정렬은 아직 구현되지 않았습니다. Like 도메인 구현 후 추가됩니다.");
-        }
-        return " ORDER BY p.updatedAt DESC"; // 기본값
-    }
-
-    private long countProducts(Long refBrandId) {
-        StringBuilder jpql = new StringBuilder("SELECT COUNT(p) FROM ProductModel p WHERE p.deletedAt IS NULL");
+    private List<ProductModel> findProductsNative(Long refBrandId, String sortBy, Pageable pageable) {
+        // Native Query 사용 (VO 타입 문제 회피)
+        StringBuilder sql = new StringBuilder("SELECT * FROM products WHERE deleted_at IS NULL");
 
         if (refBrandId != null) {
-            jpql.append(" AND p.refBrandId = :refBrandId");
+            sql.append(" AND ref_brand_id = :refBrandId");
         }
 
-        TypedQuery<Long> query = entityManager.createQuery(jpql.toString(), Long.class);
+        sql.append(getNativeSortClause(sortBy));
+
+        var query = entityManager.createNativeQuery(sql.toString(), ProductModel.class);
+
         if (refBrandId != null) {
             query.setParameter("refBrandId", refBrandId);
         }
 
-        return query.getSingleResult();
+        query.setFirstResult((int) pageable.getOffset());
+        query.setMaxResults(pageable.getPageSize());
+
+        return query.getResultList();
+    }
+
+    private String getNativeSortClause(String sortBy) {
+        if (sortBy == null || "latest".equals(sortBy)) {
+            return " ORDER BY updated_at DESC";
+        } else if ("price_asc".equals(sortBy)) {
+            return " ORDER BY price ASC";
+        }
+        return " ORDER BY updated_at DESC"; // 기본값
+    }
+
+    private List<ProductModel> findProductsWithLikesCount(Long refBrandId, Pageable pageable) {
+        // Native Query: LEFT JOIN으로 좋아요 수 카운트 후 정렬
+        StringBuilder sql = new StringBuilder(
+                "SELECT p.* FROM products p " +
+                "LEFT JOIN likes l ON p.id = l.ref_product_id " +
+                "WHERE p.deleted_at IS NULL");
+
+        if (refBrandId != null) {
+            sql.append(" AND p.ref_brand_id = :refBrandId");
+        }
+
+        sql.append(" GROUP BY p.id")
+           .append(" ORDER BY COUNT(l.id) DESC, p.updated_at DESC"); // 좋아요 수 동일 시 최신순
+
+        var query = entityManager.createNativeQuery(sql.toString(), ProductModel.class);
+
+        if (refBrandId != null) {
+            query.setParameter("refBrandId", refBrandId);
+        }
+
+        query.setFirstResult((int) pageable.getOffset());
+        query.setMaxResults(pageable.getPageSize());
+
+        return query.getResultList();
+    }
+
+    private long countProducts(Long refBrandId) {
+        // Native Query 사용 (VO 타입 문제 회피)
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM products WHERE deleted_at IS NULL");
+
+        if (refBrandId != null) {
+            sql.append(" AND ref_brand_id = :refBrandId");
+        }
+
+        var query = entityManager.createNativeQuery(sql.toString());
+        if (refBrandId != null) {
+            query.setParameter("refBrandId", refBrandId);
+        }
+
+        return ((Number) query.getSingleResult()).longValue();
     }
 
     @Override
