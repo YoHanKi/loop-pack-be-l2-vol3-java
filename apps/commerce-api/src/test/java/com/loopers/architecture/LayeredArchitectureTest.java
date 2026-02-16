@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 
 /**
@@ -101,5 +102,79 @@ class LayeredArchitectureTest {
                         "(데이터 타입(VO/Enum/Entity)은 검증 대상에서 제외)");
 
         rule.check(classes);
+    }
+
+    @Test
+    @DisplayName("Interfaces 컴포넌트는 Domain, Infrastructure 컴포넌트를 직접 의존하면 안 됨")
+    void interfaces_components_should_not_depend_on_domain_or_infrastructure_components() {
+        // Controller가 Service나 Repository를 직접 호출하는 것 금지
+        // (VO, Enum, Entity 같은 데이터 타입 의존은 허용)
+        ArchRule rule = noClasses()
+                .that().resideInAPackage("com.loopers.interfaces..")
+                .and().haveSimpleNameEndingWith("Controller")
+                .should().dependOnClassesThat()
+                    .resideInAnyPackage("com.loopers.domain..", "com.loopers.infrastructure..")
+                    .andShould().haveSimpleNameEndingWith("Service")
+                    .orShould().haveSimpleNameEndingWith("Repository")
+                    .orShould().haveSimpleNameEndingWith("RepositoryImpl")
+                .because("Controller는 Facade를 통해서만 하위 레이어에 접근해야 합니다");
+
+        rule.check(classes);
+    }
+
+    @Test
+    @DisplayName("Application 컴포넌트는 Infrastructure 컴포넌트를 직접 의존하면 안 됨")
+    void application_components_should_not_depend_on_infrastructure_components() {
+        // Facade가 Repository 구현체를 직접 호출하는 것 금지
+        ArchRule rule = noClasses()
+                .that().resideInAPackage("com.loopers.application..")
+                .and().haveSimpleNameEndingWith("Facade")
+                .should().dependOnClassesThat()
+                    .resideInAnyPackage("com.loopers.infrastructure..")
+                    .andShould().haveSimpleNameEndingWith("RepositoryImpl")
+                .because("Facade는 Domain Service를 통해서만 데이터에 접근해야 합니다");
+
+        rule.check(classes);
+    }
+
+    @Test
+    @DisplayName("Domain Service는 Repository 인터페이스만 의존해야 함")
+    void domain_services_should_only_depend_on_repository_interfaces() {
+        // Service가 RepositoryImpl을 직접 의존하지 않고 Repository 인터페이스만 사용
+        ArchRule rule = noClasses()
+                .that().resideInAPackage("com.loopers.domain..")
+                .and().haveSimpleNameEndingWith("Service")
+                .should().dependOnClassesThat()
+                    .resideInAnyPackage("com.loopers.infrastructure..")
+                    .andShould().haveSimpleNameNotEndingWith("Converter") // Converter는 예외
+                .because("Service는 Repository 인터페이스를 통해 데이터에 접근해야 합니다");
+
+        rule.check(classes);
+    }
+
+    @Test
+    @DisplayName("레이어는 역방향으로 접근할 수 없음 (상위 레이어 접근 금지)")
+    void layers_should_not_access_upper_layers() {
+        // Application이 Interfaces 접근 금지
+        ArchRule applicationToInterfaces = noClasses()
+                .that().resideInAPackage("com.loopers.application..")
+                .should().dependOnClassesThat().resideInAnyPackage("com.loopers.interfaces..")
+                .because("하위 레이어가 상위 레이어를 의존하면 순환 의존성이 발생합니다");
+
+        // Domain이 Interfaces, Application 접근 금지
+        ArchRule domainToUpper = noClasses()
+                .that().resideInAPackage("com.loopers.domain..")
+                .should().dependOnClassesThat().resideInAnyPackage("com.loopers.interfaces..", "com.loopers.application..")
+                .because("하위 레이어가 상위 레이어를 의존하면 순환 의존성이 발생합니다");
+
+        // Infrastructure가 Interfaces, Application 접근 금지
+        ArchRule infraToUpper = noClasses()
+                .that().resideInAPackage("com.loopers.infrastructure..")
+                .should().dependOnClassesThat().resideInAnyPackage("com.loopers.interfaces..", "com.loopers.application..")
+                .because("하위 레이어가 상위 레이어를 의존하면 순환 의존성이 발생합니다");
+
+        applicationToInterfaces.check(classes);
+        domainToUpper.check(classes);
+        infraToUpper.check(classes);
     }
 }
