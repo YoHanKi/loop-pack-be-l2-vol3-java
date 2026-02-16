@@ -93,4 +93,33 @@ public class ProductRepositoryImpl implements ProductRepository {
 
         return query.getSingleResult();
     }
+
+    @Override
+    public boolean decreaseStockIfAvailable(Long productId, int quantity) {
+        // 동시성 제어를 위한 조건부 UPDATE (Native Query 사용 - VO 타입 문제 회피)
+        String sql = "UPDATE products " +
+                "SET stock_quantity = stock_quantity - :quantity " +
+                "WHERE id = :productId " +
+                "AND stock_quantity >= :quantity";
+
+        int updatedCount = entityManager.createNativeQuery(sql)
+                .setParameter("quantity", quantity)
+                .setParameter("productId", productId)
+                .executeUpdate();
+
+        return updatedCount > 0;
+    }
+
+    @Override
+    public void increaseStock(Long productId, int quantity) {
+        // Native Query 사용 (VO 타입 문제 회피)
+        String sql = "UPDATE products " +
+                "SET stock_quantity = stock_quantity + :quantity " +
+                "WHERE id = :productId";
+
+        entityManager.createNativeQuery(sql)
+                .setParameter("quantity", quantity)
+                .setParameter("productId", productId)
+                .executeUpdate();
+    }
 }
