@@ -1,5 +1,6 @@
 package com.loopers.interfaces.api.product;
 
+import com.loopers.application.brand.BrandInfo;
 import com.loopers.application.product.ProductInfo;
 import jakarta.validation.constraints.*;
 
@@ -35,7 +36,9 @@ public class ProductV1Dto {
             Long refBrandId,
             String productName,
             BigDecimal price,
-            int stockQuantity
+            int stockQuantity,
+            BrandInfo brand,
+            long likesCount
     ) {
         public static ProductResponse from(ProductInfo info) {
             return new ProductResponse(
@@ -44,7 +47,9 @@ public class ProductV1Dto {
                     info.refBrandId(),
                     info.productName(),
                     info.price(),
-                    info.stockQuantity()
+                    info.stockQuantity(),
+                    info.brand(),
+                    info.likesCount()
             );
         }
     }

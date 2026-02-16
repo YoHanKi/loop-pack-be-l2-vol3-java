@@ -153,4 +153,14 @@ public class ProductRepositoryImpl implements ProductRepository {
                 .setParameter("productId", productId)
                 .executeUpdate();
     }
+
+    @Override
+    public long countLikes(Long productId) {
+        String sql = "SELECT COUNT(*) FROM likes WHERE ref_product_id = :productId";
+
+        var query = entityManager.createNativeQuery(sql);
+        query.setParameter("productId", productId);
+
+        return ((Number) query.getSingleResult()).longValue();
+    }
 }

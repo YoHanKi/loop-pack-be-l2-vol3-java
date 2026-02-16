@@ -1,5 +1,7 @@
 package com.loopers.application.product;
 
+import com.loopers.application.brand.BrandInfo;
+import com.loopers.domain.brand.BrandModel;
 import com.loopers.domain.product.ProductModel;
 
 import java.math.BigDecimal;
@@ -10,16 +12,20 @@ public record ProductInfo(
         Long refBrandId,
         String productName,
         BigDecimal price,
-        int stockQuantity
+        int stockQuantity,
+        BrandInfo brand,
+        long likesCount
 ) {
-    public static ProductInfo from(ProductModel product) {
+    public static ProductInfo from(ProductModel product, BrandModel brand, long likesCount) {
         return new ProductInfo(
                 product.getId(),
                 product.getProductId().value(),
                 product.getRefBrandId().value(),
                 product.getProductName().value(),
                 product.getPrice().value(),
-                product.getStockQuantity().value()
+                product.getStockQuantity().value(),
+                BrandInfo.from(brand),
+                likesCount
         );
     }
 }

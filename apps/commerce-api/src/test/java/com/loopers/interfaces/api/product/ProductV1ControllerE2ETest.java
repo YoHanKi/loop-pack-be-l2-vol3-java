@@ -76,12 +76,17 @@ class ProductV1ControllerE2ETest {
             assertAll(
                     () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED),
                     () -> assertThat(response.getBody()).isNotNull(),
-                    () -> assertThat(response.getBody().success()).isEqualTo(true),
+                    () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.SUCCESS),
+                    () -> assertThat(response.getBody().data()).isNotNull(),
                     () -> assertThat(response.getBody().data().productId()).isEqualTo("prod1"),
                     () -> assertThat(response.getBody().data().refBrandId()).isNotNull(),
                     () -> assertThat(response.getBody().data().productName()).isEqualTo("Nike Air Max"),
                     () -> assertThat(response.getBody().data().price()).isEqualByComparingTo(new BigDecimal("150000.00")),
-                    () -> assertThat(response.getBody().data().stockQuantity()).isEqualTo(100)
+                    () -> assertThat(response.getBody().data().stockQuantity()).isEqualTo(100),
+                    () -> assertThat(response.getBody().data().brand()).isNotNull(),
+                    () -> assertThat(response.getBody().data().brand().brandId()).isEqualTo("nike"),
+                    () -> assertThat(response.getBody().data().brand().brandName()).isEqualTo("Nike"),
+                    () -> assertThat(response.getBody().data().likesCount()).isEqualTo(0)
             );
         }
 
@@ -190,7 +195,7 @@ class ProductV1ControllerE2ETest {
             assertAll(
                     () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                     () -> assertThat(response.getBody()).isNotNull(),
-                    () -> assertThat(response.getBody().success()).isEqualTo(true),
+                    () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.SUCCESS),
                     () -> assertThat(response.getBody().data().products()).hasSize(2),
                     () -> assertThat(response.getBody().data().totalElements()).isEqualTo(2)
             );
@@ -320,7 +325,7 @@ class ProductV1ControllerE2ETest {
             assertAll(
                     () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                     () -> assertThat(response.getBody()).isNotNull(),
-                    () -> assertThat(response.getBody().success()).isEqualTo(true)
+                    () -> assertThat(response.getBody().meta().result()).isEqualTo(ApiResponse.Metadata.Result.SUCCESS)
             );
 
             // 삭제 후 목록 조회 시 제외됨 확인

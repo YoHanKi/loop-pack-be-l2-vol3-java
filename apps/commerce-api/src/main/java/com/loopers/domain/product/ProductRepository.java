@@ -25,4 +25,9 @@ public interface ProductRepository {
      * 재고를 증가시킵니다.
      */
     void increaseStock(Long productId, int quantity);
+
+    /**
+     * 상품의 좋아요 수를 조회합니다.
+     */
+    long countLikes(Long productId);
 }

@@ -24,6 +24,11 @@ public class BrandRepositoryImpl implements BrandRepository {
     }
 
     @Override
+    public Optional<BrandModel> findById(Long id) {
+        return brandJpaRepository.findById(id);
+    }
+
+    @Override
     public boolean existsByBrandId(BrandId brandId) {
         return brandJpaRepository.existsByBrandId(brandId);
     }
