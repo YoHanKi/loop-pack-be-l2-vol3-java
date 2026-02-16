@@ -1,6 +1,8 @@
 package com.loopers.domain.product;
 
-import com.loopers.domain.brand.BrandReader;
+import com.loopers.domain.brand.BrandRepository;
+import com.loopers.domain.brand.vo.BrandId;
+import com.loopers.domain.product.vo.ProductId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
@@ -16,18 +18,18 @@ import java.math.BigDecimal;
 public class ProductService {
 
     private final ProductRepository productRepository;
-    private final ProductReader productReader;
-    private final BrandReader brandReader;
+    private final BrandRepository brandRepository;
 
     @Transactional
     public ProductModel createProduct(String productId, String brandId, String productName, BigDecimal price, int stockQuantity) {
         // 중복 체크
-        if (productReader.exists(productId)) {
+        if (productRepository.existsByProductId(new ProductId(productId))) {
             throw new CoreException(ErrorType.CONFLICT, "이미 존재하는 상품 ID입니다.");
         }
 
         // 브랜드 존재 확인 및 PK 획득
-        var brand = brandReader.getOrThrow(brandId);
+        var brand = brandRepository.findByBrandId(new BrandId(brandId))
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."));
         Long refBrandId = brand.getId();
 
         // 상품 생성
@@ -39,7 +41,8 @@ public class ProductService {
 
     @Transactional
     public void deleteProduct(String productId) {
-        ProductModel product = productReader.getOrThrow(productId);
+        ProductModel product = productRepository.findByProductId(new ProductId(productId))
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
 
         // Soft delete
         product.markAsDeleted();
@@ -51,9 +54,10 @@ public class ProductService {
         // brandId가 제공되면 Brand PK로 변환
         Long refBrandId = null;
         if (brandId != null && !brandId.isBlank()) {
-            var brand = brandReader.getOrThrow(brandId);
+            var brand = brandRepository.findByBrandId(new BrandId(brandId))
+                    .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."));
             refBrandId = brand.getId();
         }
-        return productReader.findProducts(refBrandId, sortBy, pageable);
+        return productRepository.findProducts(refBrandId, sortBy, pageable);
     }
 }

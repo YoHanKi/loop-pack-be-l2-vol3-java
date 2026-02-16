@@ -11,6 +11,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -23,9 +25,6 @@ class BrandServiceTest {
     @Mock
     private BrandRepository brandRepository;
 
-    @Mock
-    private BrandReader brandReader;
-
     @InjectMocks
     private BrandService brandService;
 
@@ -37,7 +36,7 @@ class BrandServiceTest {
         String brandName = "Nike";
         BrandModel mockBrand = BrandModel.create(brandId, brandName);
 
-        when(brandReader.exists(brandId)).thenReturn(false);
+        when(brandRepository.existsByBrandId(any(BrandId.class))).thenReturn(false);
         when(brandRepository.save(any(BrandModel.class))).thenReturn(mockBrand);
 
         // when
@@ -48,7 +47,7 @@ class BrandServiceTest {
         assertThat(result.getBrandId()).isEqualTo(new BrandId(brandId));
         assertThat(result.getBrandName()).isEqualTo(new BrandName(brandName));
 
-        verify(brandReader, times(1)).exists(brandId);
+        verify(brandRepository, times(1)).existsByBrandId(any(BrandId.class));
         verify(brandRepository, times(1)).save(any(BrandModel.class));
     }
 
@@ -57,7 +56,7 @@ class BrandServiceTest {
     void createBrand_duplicateId_throwsException() {
         // given
         String brandId = "adidas";
-        when(brandReader.exists(brandId)).thenReturn(true);
+        when(brandRepository.existsByBrandId(any(BrandId.class))).thenReturn(true);
 
         // when & then
         assertThatThrownBy(() -> brandService.createBrand(brandId, "Adidas"))
@@ -66,7 +65,7 @@ class BrandServiceTest {
                 .extracting("errorType")
                 .isEqualTo(ErrorType.CONFLICT);
 
-        verify(brandReader, times(1)).exists(brandId);
+        verify(brandRepository, times(1)).existsByBrandId(any(BrandId.class));
         verify(brandRepository, never()).save(any(BrandModel.class));
     }
 
@@ -77,14 +76,14 @@ class BrandServiceTest {
         String brandId = "puma";
         BrandModel mockBrand = BrandModel.create(brandId, "Puma");
 
-        when(brandReader.getOrThrow(brandId)).thenReturn(mockBrand);
+        when(brandRepository.findByBrandId(any(BrandId.class))).thenReturn(Optional.of(mockBrand));
         when(brandRepository.save(any(BrandModel.class))).thenReturn(mockBrand);
 
         // when
         brandService.deleteBrand(brandId);
 
         // then
-        verify(brandReader, times(1)).getOrThrow(brandId);
+        verify(brandRepository, times(1)).findByBrandId(any(BrandId.class));
         verify(brandRepository, times(1)).save(mockBrand);
         assertThat(mockBrand.isDeleted()).isTrue();
     }
@@ -93,18 +92,19 @@ class BrandServiceTest {
     @DisplayName("브랜드 삭제 - 존재하지 않는 브랜드")
     void deleteBrand_notFound_throwsException() {
         // given
-        String brandId = "nonexistent";
-        when(brandReader.getOrThrow(brandId))
-                .thenThrow(new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."));
+        String brandId = "invalid123"; // 10자 이하로 변경
+        when(brandRepository.findByBrandId(any(BrandId.class))).thenReturn(Optional.empty());
 
         // when & then
         assertThatThrownBy(() -> brandService.deleteBrand(brandId))
                 .isInstanceOf(CoreException.class)
                 .hasMessageContaining("해당 ID의 브랜드가 존재하지 않습니다.")
-                .extracting("errorType")
-                .isEqualTo(ErrorType.NOT_FOUND);
+                .satisfies(e -> {
+                    CoreException ce = (CoreException) e;
+                    assertThat(ce.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
+                });
 
-        verify(brandReader, times(1)).getOrThrow(brandId);
+        verify(brandRepository, times(1)).findByBrandId(any(BrandId.class));
         verify(brandRepository, never()).save(any(BrandModel.class));
     }
 }

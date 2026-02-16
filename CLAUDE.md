@@ -46,7 +46,7 @@ Interfaces Layer (Controller, ApiSpec, Dto)
     ↓
 Application Layer (Facade, Info)
     ↓
-Domain Layer (Model, Reader, Service, Repository, VO)
+Domain Layer (Model, Service, Repository, VO)
     ↓
 Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 ```
@@ -55,8 +55,8 @@ Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 
 **Domain Layer** - 핵심 비즈니스 로직
 - **Model**: JPA Entity, `BaseEntity` 상속, 정적 팩토리 `create()`, 도메인 행위 메서드
-- **Reader**: 읽기 전용 조회, VO 변환, 조회+예외 통합 (`getOrThrow`)
-- **Service**: 교차 엔티티 규칙 (중복 체크 등), 트랜잭션 관리
+- **Service**: 비즈니스 로직, 트랜잭션 관리, Repository를 통한 조회 및 저장
+- **Repository**: 데이터 조회 및 저장, `findByXXX().orElseThrow()` 패턴 사용
 - **Value Object**: `record` 타입, Compact Constructor 검증, 불변
 
 **Application Layer** - 유스케이스 조합
@@ -77,7 +77,6 @@ Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 
 ### 네이밍 규칙
 - Entity: `{Domain}Model` (예: `MemberModel`)
-- Reader: `{Domain}Reader`
 - Service: `{Domain}Service`
 - Repository: `{Domain}Repository` / `{Domain}RepositoryImpl` / `{Domain}JpaRepository`
 - Controller: `{Domain}V{version}Controller`
@@ -190,12 +189,12 @@ Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 ## 아키텍처, 패키지 구성 전략
 
 - **레이어 의존성 방향**: `Controller → Facade → Service → Repository` (단방향), Infrastructure는 Domain 인터페이스 구현 (Port-Adapter).
-- **Thin Facade 원칙**: Facade는 Service만 호출하고 Reader 직접 호출 금지, 비즈니스 로직은 Service에 위임(조율만 담당).
+- **Thin Facade 원칙**: Facade는 Service만 호출, 비즈니스 로직은 Service에 위임(조율만 담당).
 - **DTO vs Info vs Model 분리**: DTO(HTTP 계층) → Info(Application 결과 VO) → Model(Domain Entity), 각 레이어 독립성 유지.
-- **Reader vs Service**: Reader는 읽기 전용 + getOrThrow 패턴, Service는 CUD + 비즈니스 규칙 + @Transactional 경계.
+- **Service 책임**: Service는 Repository를 통한 조회 및 저장, 비즈니스 규칙 검증, @Transactional 경계 관리.
 - **Repository Pattern**: Domain에 Repository 인터페이스(Port), Infrastructure에 구현체(Adapter), Domain이 Infrastructure를 모름.
 - **Info 변환**: Facade에서 Model → Info 변환, Controller는 Model 노출 금지(Info만 사용), 레이어 격리 유지.
-- **컴포넌트 책임**: Controller(HTTP), Facade(유스케이스 조합), Service(비즈니스 로직), Reader(조회), Repository(영속화).
+- **컴포넌트 책임**: Controller(HTTP), Facade(유스케이스 조합), Service(비즈니스 로직 + 조회), Repository(영속화).
 
 ---
 

@@ -1,7 +1,7 @@
 package com.loopers.domain.product;
 
 import com.loopers.domain.brand.BrandModel;
-import com.loopers.domain.brand.BrandReader;
+import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.brand.vo.BrandId;
 import com.loopers.domain.product.vo.ProductId;
 import com.loopers.support.error.CoreException;
@@ -30,10 +30,7 @@ class ProductServiceTest {
     private ProductRepository productRepository;
 
     @Mock
-    private ProductReader productReader;
-
-    @Mock
-    private BrandReader brandReader;
+    private BrandRepository brandRepository;
 
     @InjectMocks
     private ProductService productService;
@@ -55,8 +52,8 @@ class ProductServiceTest {
             BrandModel mockBrand = mock(BrandModel.class);
             when(mockBrand.getId()).thenReturn(1L);
 
-            when(productReader.exists(productId)).thenReturn(false);
-            when(brandReader.getOrThrow(brandId)).thenReturn(mockBrand);
+            when(productRepository.existsByProductId(any(ProductId.class))).thenReturn(false);
+            when(brandRepository.findByBrandId(any(BrandId.class))).thenReturn(Optional.of(mockBrand));
             when(productRepository.save(any(ProductModel.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
             // when
@@ -66,8 +63,8 @@ class ProductServiceTest {
             assertThat(result).isNotNull();
             assertThat(result.getProductId().value()).isEqualTo(productId);
             assertThat(result.getRefBrandId().value()).isEqualTo(1L);
-            verify(productReader, times(1)).exists(productId);
-            verify(brandReader, times(1)).getOrThrow(brandId);
+            verify(productRepository, times(1)).existsByProductId(any(ProductId.class));
+            verify(brandRepository, times(1)).findByBrandId(any(BrandId.class));
             verify(productRepository, times(1)).save(any(ProductModel.class));
         }
 
@@ -81,15 +78,15 @@ class ProductServiceTest {
             BigDecimal price = new BigDecimal("150000");
             int stockQuantity = 100;
 
-            when(productReader.exists(productId)).thenReturn(true);
+            when(productRepository.existsByProductId(any(ProductId.class))).thenReturn(true);
 
             // when & then
             assertThatThrownBy(() -> productService.createProduct(productId, brandId, productName, price, stockQuantity))
                     .isInstanceOf(CoreException.class)
                     .hasMessageContaining("이미 존재하는 상품 ID입니다");
 
-            verify(productReader, times(1)).exists(productId);
-            verify(brandReader, never()).getOrThrow(anyString());
+            verify(productRepository, times(1)).existsByProductId(any(ProductId.class));
+            verify(brandRepository, never()).findByBrandId(any(BrandId.class));
             verify(productRepository, never()).save(any(ProductModel.class));
         }
 
@@ -98,22 +95,21 @@ class ProductServiceTest {
         void createProduct_withNonExistentBrand_throwsException() {
             // given
             String productId = "prod1";
-            String brandId = "invalidBrand";
+            String brandId = "invalid12"; // 10자 이하로 변경
             String productName = "Nike Air Max";
             BigDecimal price = new BigDecimal("150000");
             int stockQuantity = 100;
 
-            when(productReader.exists(productId)).thenReturn(false);
-            doThrow(new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."))
-                    .when(brandReader).getOrThrow(brandId);
+            when(productRepository.existsByProductId(any(ProductId.class))).thenReturn(false);
+            when(brandRepository.findByBrandId(any(BrandId.class))).thenReturn(Optional.empty());
 
             // when & then
             assertThatThrownBy(() -> productService.createProduct(productId, brandId, productName, price, stockQuantity))
                     .isInstanceOf(CoreException.class)
-                    .hasMessageContaining("브랜드가 존재하지 않습니다");
+                    .hasMessageContaining("해당 ID의 브랜드가 존재하지 않습니다");
 
-            verify(productReader, times(1)).exists(productId);
-            verify(brandReader, times(1)).getOrThrow(brandId);
+            verify(productRepository, times(1)).existsByProductId(any(ProductId.class));
+            verify(brandRepository, times(1)).findByBrandId(any(BrandId.class));
             verify(productRepository, never()).save(any(ProductModel.class));
         }
     }
@@ -129,7 +125,7 @@ class ProductServiceTest {
             String productId = "prod1";
             ProductModel product = ProductModel.create(productId, 1L, "Nike Air", new BigDecimal("100000"), 50);
 
-            when(productReader.getOrThrow(productId)).thenReturn(product);
+            when(productRepository.findByProductId(any(ProductId.class))).thenReturn(Optional.of(product));
             when(productRepository.save(any(ProductModel.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
             // when
@@ -137,7 +133,7 @@ class ProductServiceTest {
 
             // then
             assertThat(product.isDeleted()).isTrue();
-            verify(productReader, times(1)).getOrThrow(productId);
+            verify(productRepository, times(1)).findByProductId(any(ProductId.class));
             verify(productRepository, times(1)).save(product);
         }
 
@@ -147,15 +143,14 @@ class ProductServiceTest {
             // given
             String productId = "invalidProduct";
 
-            when(productReader.getOrThrow(productId))
-                    .thenThrow(new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
+            when(productRepository.findByProductId(any(ProductId.class))).thenReturn(Optional.empty());
 
             // when & then
             assertThatThrownBy(() -> productService.deleteProduct(productId))
                     .isInstanceOf(CoreException.class)
                     .hasMessageContaining("상품이 존재하지 않습니다");
 
-            verify(productReader, times(1)).getOrThrow(productId);
+            verify(productRepository, times(1)).findByProductId(any(ProductId.class));
             verify(productRepository, never()).save(any(ProductModel.class));
         }
     }

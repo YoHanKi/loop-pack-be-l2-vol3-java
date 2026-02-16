@@ -31,9 +31,6 @@ class MemberServiceIntegrationTest {
     private MemberService memberService;
 
     @Autowired
-    private MemberReader memberReader;
-
-    @Autowired
     private MemberJpaRepository memberJpaRepository;
 
     @Autowired
@@ -243,7 +240,7 @@ class MemberServiceIntegrationTest {
             memberService.changePassword(VALID_MEMBER_ID, VALID_PASSWORD, VALID_PASSWORD, newPassword);
 
             // assert
-            MemberModel member = memberReader.getOrThrow(VALID_MEMBER_ID);
+            MemberModel member = memberJpaRepository.findByMemberId(new MemberId(VALID_MEMBER_ID)).orElseThrow();
             assertThat(member.verifyPassword(passwordHasher, newPassword)).isTrue();
         }
 
@@ -340,7 +337,7 @@ class MemberServiceIntegrationTest {
             );
 
             // act
-            MemberModel foundMember = memberReader.getMemberByMemberId(VALID_MEMBER_ID);
+            MemberModel foundMember = memberJpaRepository.findByMemberId(new MemberId(VALID_MEMBER_ID)).orElse(null);
 
             // assert
             assertAll(
@@ -364,7 +361,7 @@ class MemberServiceIntegrationTest {
             String nonExistentMemberId = "nonexist1";
 
             // act
-            MemberModel foundMember = memberReader.getMemberByMemberId(nonExistentMemberId);
+            MemberModel foundMember = memberJpaRepository.findByMemberId(new MemberId(nonExistentMemberId)).orElse(null);
 
             // assert
             assertThat(foundMember).isNull();

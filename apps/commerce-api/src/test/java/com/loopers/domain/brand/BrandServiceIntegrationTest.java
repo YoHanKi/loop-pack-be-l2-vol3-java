@@ -32,9 +32,6 @@ class BrandServiceIntegrationTest {
     private BrandService brandService;
 
     @Autowired
-    private BrandReader brandReader;
-
-    @Autowired
     private BrandJpaRepository brandJpaRepository;
 
     @Autowired
@@ -106,7 +103,7 @@ class BrandServiceIntegrationTest {
         brandService.deleteBrand(brandId);
 
         // then
-        BrandModel deletedBrand = brandReader.getOrThrow(brandId);
+        BrandModel deletedBrand = brandJpaRepository.findByBrandId(new BrandId(brandId)).orElseThrow();
         assertThat(deletedBrand.isDeleted()).isTrue();
         assertThat(deletedBrand.getDeletedAt()).isNotNull();
 
