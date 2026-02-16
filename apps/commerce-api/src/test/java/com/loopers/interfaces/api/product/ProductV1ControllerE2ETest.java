@@ -78,7 +78,7 @@ class ProductV1ControllerE2ETest {
                     () -> assertThat(response.getBody()).isNotNull(),
                     () -> assertThat(response.getBody().success()).isEqualTo(true),
                     () -> assertThat(response.getBody().data().productId()).isEqualTo("prod1"),
-                    () -> assertThat(response.getBody().data().brandId()).isEqualTo("nike"),
+                    () -> assertThat(response.getBody().data().refBrandId()).isNotNull(),
                     () -> assertThat(response.getBody().data().productName()).isEqualTo("Nike Air Max"),
                     () -> assertThat(response.getBody().data().price()).isEqualByComparingTo(new BigDecimal("150000.00")),
                     () -> assertThat(response.getBody().data().stockQuantity()).isEqualTo(100)
@@ -235,7 +235,7 @@ class ProductV1ControllerE2ETest {
                     () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                     () -> assertThat(response.getBody()).isNotNull(),
                     () -> assertThat(response.getBody().data().products()).hasSize(1),
-                    () -> assertThat(response.getBody().data().products().get(0).brandId()).isEqualTo("nike")
+                    () -> assertThat(response.getBody().data().products().get(0).refBrandId()).isNotNull()
             );
         }
 

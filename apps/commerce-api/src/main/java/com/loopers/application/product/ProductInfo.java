@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 public record ProductInfo(
         Long id,
         String productId,
-        String brandId,
+        Long refBrandId,
         String productName,
         BigDecimal price,
         int stockQuantity
@@ -16,7 +16,7 @@ public record ProductInfo(
         return new ProductInfo(
                 product.getId(),
                 product.getProductId().value(),
-                product.getBrandId().value(),
+                product.getRefBrandId().value(),
                 product.getProductName().value(),
                 product.getPrice().value(),
                 product.getStockQuantity().value()

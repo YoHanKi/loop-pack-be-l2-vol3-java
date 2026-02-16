@@ -1,6 +1,6 @@
 package com.loopers.domain.product;
 
-import com.loopers.domain.brand.vo.BrandId;
+
 import com.loopers.domain.product.vo.Price;
 import com.loopers.domain.product.vo.ProductId;
 import com.loopers.domain.product.vo.ProductName;
@@ -32,11 +32,10 @@ class ProductModelTest {
         int stockQuantity = 100;
 
         // when
-        ProductModel product = ProductModel.create(productId, brandId, productName, price, stockQuantity);
+        ProductModel product = ProductModel.create(productId, 1L, productName, price, stockQuantity);
 
         // then
         assertThat(product.getProductId()).isEqualTo(new ProductId(productId));
-        assertThat(product.getBrandId()).isEqualTo(new BrandId(brandId));
         assertThat(product.getProductName()).isEqualTo(new ProductName(productName));
         assertThat(product.getPrice().value()).isEqualByComparingTo(price.setScale(2, java.math.RoundingMode.HALF_UP));
         assertThat(product.getStockQuantity().value()).isEqualTo(stockQuantity);
@@ -51,7 +50,7 @@ class ProductModelTest {
         @DisplayName("재고가 충분하면 차감 성공")
         void decreaseStock_success() {
         // given
-        ProductModel product = ProductModel.create("prod1", "nike", "Nike Air", new BigDecimal("100000"), 50);
+        ProductModel product = ProductModel.create("prod1", 1L, "Nike Air", new BigDecimal("100000"), 50);
 
         // when
         product.decreaseStock(10);
@@ -64,7 +63,7 @@ class ProductModelTest {
         @DisplayName("재고가 부족하면 예외 발생")
         void decreaseStock_insufficient_stock_throws_exception() {
         // given
-        ProductModel product = ProductModel.create("prod1", "nike", "Nike Air", new BigDecimal("100000"), 5);
+        ProductModel product = ProductModel.create("prod1", 1L, "Nike Air", new BigDecimal("100000"), 5);
 
         // when & then
         assertThatThrownBy(() -> product.decreaseStock(10))
@@ -76,7 +75,7 @@ class ProductModelTest {
         @DisplayName("0개 차감 시 재고 변화 없음")
         void decreaseStock_zero_does_not_change_stock() {
         // given
-        ProductModel product = ProductModel.create("prod1", "nike", "Nike Air", new BigDecimal("100000"), 50);
+        ProductModel product = ProductModel.create("prod1", 1L, "Nike Air", new BigDecimal("100000"), 50);
 
         // when
         product.decreaseStock(0);
@@ -93,7 +92,7 @@ class ProductModelTest {
         @DisplayName("재고 증가 성공")
         void increaseStock_success() {
             // given
-            ProductModel product = ProductModel.create("prod1", "nike", "Nike Air", new BigDecimal("100000"), 50);
+            ProductModel product = ProductModel.create("prod1", 1L, "Nike Air", new BigDecimal("100000"), 50);
 
             // when
             product.increaseStock(20);
@@ -110,7 +109,7 @@ class ProductModelTest {
         @DisplayName("markAsDeleted() 호출 시 deletedAt 설정됨")
         void mark_as_deleted_sets_deletedAt() {
             // given
-            ProductModel product = ProductModel.create("prod1", "nike", "Nike Air", new BigDecimal("100000"), 50);
+            ProductModel product = ProductModel.create("prod1", 1L, "Nike Air", new BigDecimal("100000"), 50);
             assertThat(product.isDeleted()).isFalse();
 
             // when

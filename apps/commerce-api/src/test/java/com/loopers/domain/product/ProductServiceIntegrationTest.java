@@ -68,7 +68,7 @@ class ProductServiceIntegrationTest {
                     () -> assertThat(savedProduct).isNotNull(),
                     () -> assertThat(savedProduct.getId()).isNotNull(),
                     () -> assertThat(savedProduct.getProductId().value()).isEqualTo(productId),
-                    () -> assertThat(savedProduct.getBrandId().value()).isEqualTo("nike"),
+                    () -> assertThat(savedProduct.getRefBrandId()).isEqualTo(brand.getId()),
                     () -> assertThat(savedProduct.getProductName().value()).isEqualTo(productName),
                     () -> assertThat(savedProduct.getPrice().value()).isEqualByComparingTo(price.setScale(2)),
                     () -> assertThat(savedProduct.getStockQuantity().value()).isEqualTo(stockQuantity),
@@ -190,7 +190,7 @@ class ProductServiceIntegrationTest {
             // then
             assertThat(nikeProducts.getContent()).hasSize(2);
             assertThat(nikeProducts.getContent())
-                    .allMatch(p -> p.getBrandId().value().equals("nike"));
+                    .allMatch(p -> p.getRefBrandId().equals(nike.getId()));
         }
 
         @Test

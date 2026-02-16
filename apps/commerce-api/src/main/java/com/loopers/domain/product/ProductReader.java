@@ -1,6 +1,5 @@
 package com.loopers.domain.product;
 
-import com.loopers.domain.brand.vo.BrandId;
 import com.loopers.domain.product.vo.ProductId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
@@ -28,8 +27,7 @@ public class ProductReader {
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductModel> findProducts(String brandId, String sortBy, Pageable pageable) {
-        BrandId brandIdVO = brandId != null ? new BrandId(brandId) : null;
-        return productRepository.findProducts(brandIdVO, sortBy, pageable);
+    public Page<ProductModel> findProducts(Long refBrandId, String sortBy, Pageable pageable) {
+        return productRepository.findProducts(refBrandId, sortBy, pageable);
     }
 }

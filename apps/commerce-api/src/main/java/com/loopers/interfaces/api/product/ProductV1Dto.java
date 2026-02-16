@@ -32,7 +32,7 @@ public class ProductV1Dto {
     public record ProductResponse(
             Long id,
             String productId,
-            String brandId,
+            Long refBrandId,
             String productName,
             BigDecimal price,
             int stockQuantity
@@ -41,7 +41,7 @@ public class ProductV1Dto {
             return new ProductResponse(
                     info.id(),
                     info.productId(),
-                    info.brandId(),
+                    info.refBrandId(),
                     info.productName(),
                     info.price(),
                     info.stockQuantity()

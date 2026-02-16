@@ -1,5 +1,6 @@
 package com.loopers.domain.product;
 
+import com.loopers.domain.brand.BrandModel;
 import com.loopers.domain.brand.BrandReader;
 import com.loopers.domain.brand.vo.BrandId;
 import com.loopers.domain.product.vo.ProductId;
@@ -51,8 +52,11 @@ class ProductServiceTest {
             BigDecimal price = new BigDecimal("150000");
             int stockQuantity = 100;
 
+            BrandModel mockBrand = mock(BrandModel.class);
+            when(mockBrand.getId()).thenReturn(1L);
+
             when(productReader.exists(productId)).thenReturn(false);
-            // brandReader.getOrThrow()는 예외를 던지지 않으면 정상 동작으로 간주
+            when(brandReader.getOrThrow(brandId)).thenReturn(mockBrand);
             when(productRepository.save(any(ProductModel.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
             // when
@@ -61,7 +65,7 @@ class ProductServiceTest {
             // then
             assertThat(result).isNotNull();
             assertThat(result.getProductId().value()).isEqualTo(productId);
-            assertThat(result.getBrandId().value()).isEqualTo(brandId);
+            assertThat(result.getRefBrandId().value()).isEqualTo(1L);
             verify(productReader, times(1)).exists(productId);
             verify(brandReader, times(1)).getOrThrow(brandId);
             verify(productRepository, times(1)).save(any(ProductModel.class));
@@ -123,7 +127,7 @@ class ProductServiceTest {
         void deleteProduct_existingProduct_success() {
             // given
             String productId = "prod1";
-            ProductModel product = ProductModel.create(productId, "nike", "Nike Air", new BigDecimal("100000"), 50);
+            ProductModel product = ProductModel.create(productId, 1L, "Nike Air", new BigDecimal("100000"), 50);
 
             when(productReader.getOrThrow(productId)).thenReturn(product);
             when(productRepository.save(any(ProductModel.class))).thenAnswer(invocation -> invocation.getArgument(0));

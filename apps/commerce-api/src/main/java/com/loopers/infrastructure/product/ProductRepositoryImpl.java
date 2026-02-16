@@ -1,6 +1,5 @@
 package com.loopers.infrastructure.product;
 
-import com.loopers.domain.brand.vo.BrandId;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.vo.ProductId;
@@ -38,13 +37,13 @@ public class ProductRepositoryImpl implements ProductRepository {
     }
 
     @Override
-    public Page<ProductModel> findProducts(BrandId brandId, String sortBy, Pageable pageable) {
+    public Page<ProductModel> findProducts(Long refBrandId, String sortBy, Pageable pageable) {
         // JPQL 쿼리 작성
         StringBuilder jpql = new StringBuilder("SELECT p FROM ProductModel p WHERE p.deletedAt IS NULL");
 
         // 브랜드 필터
-        if (brandId != null) {
-            jpql.append(" AND p.brandId = :brandId");
+        if (refBrandId != null) {
+            jpql.append(" AND p.refBrandId = :refBrandId");
         }
 
         // 정렬
@@ -52,8 +51,8 @@ public class ProductRepositoryImpl implements ProductRepository {
 
         // 쿼리 실행
         TypedQuery<ProductModel> query = entityManager.createQuery(jpql.toString(), ProductModel.class);
-        if (brandId != null) {
-            query.setParameter("brandId", brandId);
+        if (refBrandId != null) {
+            query.setParameter("refBrandId", refBrandId);
         }
 
         // 페이징
@@ -63,7 +62,7 @@ public class ProductRepositoryImpl implements ProductRepository {
         List<ProductModel> products = query.getResultList();
 
         // 전체 개수 조회
-        long total = countProducts(brandId);
+        long total = countProducts(refBrandId);
 
         return new PageImpl<>(products, pageable, total);
     }
@@ -80,16 +79,16 @@ public class ProductRepositoryImpl implements ProductRepository {
         return " ORDER BY p.updatedAt DESC"; // 기본값
     }
 
-    private long countProducts(BrandId brandId) {
+    private long countProducts(Long refBrandId) {
         StringBuilder jpql = new StringBuilder("SELECT COUNT(p) FROM ProductModel p WHERE p.deletedAt IS NULL");
 
-        if (brandId != null) {
-            jpql.append(" AND p.brandId = :brandId");
+        if (refBrandId != null) {
+            jpql.append(" AND p.refBrandId = :refBrandId");
         }
 
         TypedQuery<Long> query = entityManager.createQuery(jpql.toString(), Long.class);
-        if (brandId != null) {
-            query.setParameter("brandId", brandId);
+        if (refBrandId != null) {
+            query.setParameter("refBrandId", refBrandId);
         }
 
         return query.getSingleResult();

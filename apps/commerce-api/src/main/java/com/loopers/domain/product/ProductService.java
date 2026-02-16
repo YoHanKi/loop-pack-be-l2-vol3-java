@@ -26,11 +26,12 @@ public class ProductService {
             throw new CoreException(ErrorType.CONFLICT, "이미 존재하는 상품 ID입니다.");
         }
 
-        // 브랜드 존재 확인
-        brandReader.getOrThrow(brandId);
+        // 브랜드 존재 확인 및 PK 획득
+        var brand = brandReader.getOrThrow(brandId);
+        Long refBrandId = brand.getId();
 
         // 상품 생성
-        ProductModel product = ProductModel.create(productId, brandId, productName, price, stockQuantity);
+        ProductModel product = ProductModel.create(productId, refBrandId, productName, price, stockQuantity);
 
         // 저장
         return productRepository.save(product);
@@ -47,6 +48,12 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Page<ProductModel> getProducts(String brandId, String sortBy, Pageable pageable) {
-        return productReader.findProducts(brandId, sortBy, pageable);
+        // brandId가 제공되면 Brand PK로 변환
+        Long refBrandId = null;
+        if (brandId != null && !brandId.isBlank()) {
+            var brand = brandReader.getOrThrow(brandId);
+            refBrandId = brand.getId();
+        }
+        return productReader.findProducts(refBrandId, sortBy, pageable);
     }
 }

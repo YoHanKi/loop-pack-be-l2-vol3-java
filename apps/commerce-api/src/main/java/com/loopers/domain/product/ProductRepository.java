@@ -1,6 +1,5 @@
 package com.loopers.domain.product;
 
-import com.loopers.domain.brand.vo.BrandId;
 import com.loopers.domain.product.vo.ProductId;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -14,5 +13,5 @@ public interface ProductRepository {
 
     boolean existsByProductId(ProductId productId);
 
-    Page<ProductModel> findProducts(BrandId brandId, String sortBy, Pageable pageable);
+    Page<ProductModel> findProducts(Long refBrandId, String sortBy, Pageable pageable);
 }
