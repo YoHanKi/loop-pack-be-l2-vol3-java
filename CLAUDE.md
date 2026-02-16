@@ -142,37 +142,6 @@ Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 - **local**: 로컬 개발 / **test**: 테스트 (TestContainers)
 - **dev**: 개발 서버 / **qa**: QA 서버 / **prd**: 운영 서버
 
-### 인프라 실행
-```bash
-# MySQL, Redis, Kafka
-docker-compose -f ./docker/infra-compose.yml up
-
-# Prometheus, Grafana
-docker-compose -f ./docker/monitoring-compose.yml up
-```
-
-### 접속 정보
-- Swagger UI: http://localhost:8080/swagger-ui.html
-- Grafana: http://localhost:3000 (admin/admin)
-
----
-
-## 빌드 및 실행
-
-```bash
-# 전체 빌드
-./gradlew clean build
-
-# 테스트
-./gradlew test
-
-# 커버리지
-./gradlew test jacocoTestReport
-
-# commerce-api 실행
-./gradlew :apps:commerce-api:bootRun
-```
-
 ---
 
 ## 도메인 예시 (Member)
@@ -200,6 +169,33 @@ docker-compose -f ./docker/monitoring-compose.yml up
 - `pr-creation`: PR 작성 가이드
 - `domain-rules`: 도메인 비즈니스 규칙
 - `jpa-database`: JPA, BaseEntity, Converter 패턴
+
+---
+
+## 도메인 & 객체 설계 전략
+
+- 도메인 모델링은 데이터 설계가 아니라 **업무 규칙을 객체 책임으로 고정**하는 작업입니다.
+- **Entity**: ID로 동일성 판단, 상태 변화와 연속성이 핵심(행위를 내부에 둠).
+- **VO**: 값 자체가 핵심, 불변 + 생성 시 유효성 강제(원시타입 규칙 중복 제거).
+- **Domain Service**: 특정 엔티티에 두기 부자연스러운 "도메인 규칙"만, 무상태로 둠.
+- **Application Service(Usecase)**: 트랜잭션/권한/저장/외부연동 등 "흐름 조립" 담당, 규칙은 도메인에 위임.
+- 규칙이 여러 서비스에 반복되면 → **도메인(엔티티/VO/도메인서비스)로 내려갈 신호**입니다.
+- 관계 자체가 의미를 가지면(누가/언제/중복/취소/이력) → `Like`처럼 **독립 도메인으로 분리**합니다.
+- 동시성 규칙은 if문만 믿지 말고 **DB 제약(유니크)로 최종 방어선**을 둡니다.
+- 의존 방향은 **Interfaces → Application → Domain ← Infrastructure**(Repo 인터페이스는 Domain, 구현은 Infra).
+- 리뷰 기준: 도메인이 기술(Spring/JPA/HTTP)을 모르고, 컬렉션/상태 변경은 루트가 통제하며, 테스트는 Fake로 가능해야 합니다.
+
+---
+
+## 아키텍처, 패키지 구성 전략
+
+- **레이어 의존성 방향**: `Controller → Facade → Service → Repository` (단방향), Infrastructure는 Domain 인터페이스 구현 (Port-Adapter).
+- **Thin Facade 원칙**: Facade는 Service만 호출하고 Reader 직접 호출 금지, 비즈니스 로직은 Service에 위임(조율만 담당).
+- **DTO vs Info vs Model 분리**: DTO(HTTP 계층) → Info(Application 결과 VO) → Model(Domain Entity), 각 레이어 독립성 유지.
+- **Reader vs Service**: Reader는 읽기 전용 + getOrThrow 패턴, Service는 CUD + 비즈니스 규칙 + @Transactional 경계.
+- **Repository Pattern**: Domain에 Repository 인터페이스(Port), Infrastructure에 구현체(Adapter), Domain이 Infrastructure를 모름.
+- **Info 변환**: Facade에서 Model → Info 변환, Controller는 Model 노출 금지(Info만 사용), 레이어 격리 유지.
+- **컴포넌트 책임**: Controller(HTTP), Facade(유스케이스 조합), Service(비즈니스 로직), Reader(조회), Repository(영속화).
 
 ---
 
