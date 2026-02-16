@@ -72,7 +72,7 @@ class LikeV1ControllerE2ETest {
             // then
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
             assertThat(response.getBody()).isNotNull();
-            assertThat(response.getBody().success()).isTrue();
+            assertThat(response.getBody()).extracting("success").isEqualTo(true);
         }
 
         @Test
