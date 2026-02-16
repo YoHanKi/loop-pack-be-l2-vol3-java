@@ -39,6 +39,7 @@ class DomainLayerTest {
         ArchRule rule = classes()
                 .that().resideInAPackage("..vo..")
                 .and().areNotNestedClasses()
+                .and().haveSimpleNameNotEndingWith("Test")
                 .should().beRecords()
                 .because("Value Object는 불변성을 보장하기 위해 record 타입을 사용해야 합니다");
 
