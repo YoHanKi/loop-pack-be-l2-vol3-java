@@ -53,6 +53,12 @@ public class ProductFacade {
         return products.map(this::enrichProductInfo);
     }
 
+    @Transactional(readOnly = true)
+    public ProductInfo getProductByDbId(Long id) {
+        ProductModel product = productService.getProductByDbId(id);
+        return enrichProductInfo(product);
+    }
+
     /**
      * ProductModel에 Brand 정보와 좋아요 수를 추가하여 ProductInfo 생성
      */

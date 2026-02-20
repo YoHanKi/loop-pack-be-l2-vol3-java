@@ -65,6 +65,12 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
+    public ProductModel getProductByDbId(Long id) {
+        return productRepository.findById(id)
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 상품이 존재하지 않습니다."));
+    }
+
+    @Transactional(readOnly = true)
     public Page<ProductModel> getProducts(String brandId, String sortBy, Pageable pageable) {
         // brandId가 제공되면 Brand PK로 변환
         Long refBrandId = null;

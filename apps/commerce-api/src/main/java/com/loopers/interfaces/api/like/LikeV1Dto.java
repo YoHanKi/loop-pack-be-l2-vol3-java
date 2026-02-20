@@ -1,8 +1,12 @@
 package com.loopers.interfaces.api.like;
 
 import com.loopers.application.like.LikeInfo;
+import com.loopers.application.like.LikedProductInfo;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+
+import java.math.BigDecimal;
+import java.time.ZonedDateTime;
 
 public class LikeV1Dto {
 
@@ -26,6 +30,24 @@ public class LikeV1Dto {
                     info.id(),
                     info.refMemberId(),
                     info.refProductId()
+            );
+        }
+    }
+
+    public record LikedProductResponse(
+            String productId,
+            String productName,
+            String brandName,
+            BigDecimal price,
+            ZonedDateTime likedAt
+    ) {
+        public static LikedProductResponse from(LikedProductInfo info) {
+            return new LikedProductResponse(
+                    info.productId(),
+                    info.productName(),
+                    info.brandName(),
+                    info.price(),
+                    info.likedAt()
             );
         }
     }

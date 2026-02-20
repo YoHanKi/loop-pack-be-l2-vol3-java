@@ -12,11 +12,14 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertAll;
 
 @SpringBootTest
 @DisplayName("LikeService 통합 테스트")
@@ -131,6 +134,85 @@ class LikeServiceIntegrationTest {
             assertThatThrownBy(() -> likeService.removeLike(memberId, "invalid"))
                     .isInstanceOf(CoreException.class)
                     .hasMessageContaining("해당 ID의 상품이 존재하지 않습니다");
+        }
+    }
+
+    @DisplayName("내 좋아요 목록을 조회할 때,")
+    @Nested
+    class GetMyLikes {
+
+        @Test
+        @DisplayName("좋아요한 상품 목록 페이징 조회 성공")
+        void getMyLikes_success() {
+            // given
+            BrandModel brand = brandService.createBrand("nike", "Nike");
+            ProductModel product1 = productService.createProduct("prod1", "nike", "Nike Air 1", new BigDecimal("100000"), 10);
+            ProductModel product2 = productService.createProduct("prod2", "nike", "Nike Air 2", new BigDecimal("200000"), 20);
+            Long memberId = 1L;
+
+            likeService.addLike(memberId, "prod1");
+            likeService.addLike(memberId, "prod2");
+
+            // when
+            Page<LikeModel> likes = likeService.getMyLikes(memberId, PageRequest.of(0, 10));
+
+            // then
+            assertAll(
+                    () -> assertThat(likes.getTotalElements()).isEqualTo(2),
+                    () -> assertThat(likes.getContent()).hasSize(2)
+            );
+        }
+
+        @Test
+        @DisplayName("삭제된 상품은 좋아요 목록에 포함되지 않음")
+        void getMyLikes_excludesDeletedProducts() {
+            // given
+            BrandModel brand = brandService.createBrand("nike", "Nike");
+            productService.createProduct("prod1", "nike", "Nike Air 1", new BigDecimal("100000"), 10);
+            productService.createProduct("prod2", "nike", "Nike Air 2", new BigDecimal("200000"), 20);
+            Long memberId = 1L;
+
+            likeService.addLike(memberId, "prod1");
+            likeService.addLike(memberId, "prod2");
+
+            // 상품 삭제
+            productService.deleteProduct("prod2");
+
+            // when
+            Page<LikeModel> likes = likeService.getMyLikes(memberId, PageRequest.of(0, 10));
+
+            // then
+            assertThat(likes.getTotalElements()).isEqualTo(1);
+            assertThat(likes.getContent().get(0).getRefProductId().value())
+                    .isEqualTo(productService.getProduct("prod1").getId());
+        }
+
+        @Test
+        @DisplayName("좋아요가 없으면 빈 목록 반환")
+        void getMyLikes_noLikes_returnsEmpty() {
+            // when
+            Page<LikeModel> likes = likeService.getMyLikes(99L, PageRequest.of(0, 10));
+
+            // then
+            assertThat(likes.getContent()).isEmpty();
+            assertThat(likes.getTotalElements()).isEqualTo(0);
+        }
+
+        @Test
+        @DisplayName("다른 회원의 좋아요는 포함되지 않음")
+        void getMyLikes_onlyReturnsOwnLikes() {
+            // given
+            BrandModel brand = brandService.createBrand("nike", "Nike");
+            productService.createProduct("prod1", "nike", "Nike Air 1", new BigDecimal("100000"), 10);
+
+            likeService.addLike(1L, "prod1");
+            likeService.addLike(2L, "prod1");
+
+            // when
+            Page<LikeModel> likes = likeService.getMyLikes(1L, PageRequest.of(0, 10));
+
+            // then
+            assertThat(likes.getTotalElements()).isEqualTo(1);
         }
     }
 }
