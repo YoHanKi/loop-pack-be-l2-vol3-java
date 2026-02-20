@@ -15,6 +15,28 @@ import org.springframework.web.bind.annotation.RequestParam;
 @Tag(name = "Product API", description = "상품 관리 API")
 public interface ProductV1ApiSpec {
 
+    @Operation(summary = "상품 단건 조회", description = "productId로 상품 상세 정보를 조회합니다.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "상품을 찾을 수 없음")
+    })
+    ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> getProduct(
+            @Parameter(description = "상품 ID", example = "prod1")
+            @PathVariable String productId
+    );
+
+    @Operation(summary = "상품 수정", description = "상품 정보(상품명, 가격, 재고)를 수정합니다.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수정 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "잘못된 요청"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "상품을 찾을 수 없음")
+    })
+    ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> updateProduct(
+            @Parameter(description = "상품 ID", example = "prod1")
+            @PathVariable String productId,
+            @RequestBody ProductV1Dto.UpdateProductRequest request
+    );
+
     @Operation(summary = "상품 생성", description = "새로운 상품을 생성합니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "상품 생성 성공"),

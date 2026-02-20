@@ -30,6 +30,18 @@ public class ProductFacade {
         return enrichProductInfo(product);
     }
 
+    @Transactional(readOnly = true)
+    public ProductInfo getProduct(String productId) {
+        ProductModel product = productService.getProduct(productId);
+        return enrichProductInfo(product);
+    }
+
+    @Transactional
+    public ProductInfo updateProduct(String productId, String productName, java.math.BigDecimal price, int stockQuantity) {
+        ProductModel product = productService.updateProduct(productId, productName, price, stockQuantity);
+        return enrichProductInfo(product);
+    }
+
     @Transactional
     public void deleteProduct(String productId) {
         productService.deleteProduct(productId);

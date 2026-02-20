@@ -39,6 +39,21 @@ public class ProductService {
         return productRepository.save(product);
     }
 
+    @Transactional(readOnly = true)
+    public ProductModel getProduct(String productId) {
+        return productRepository.findByProductId(new ProductId(productId))
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
+    }
+
+    @Transactional
+    public ProductModel updateProduct(String productId, String productName, BigDecimal price, int stockQuantity) {
+        ProductModel product = productRepository.findByProductId(new ProductId(productId))
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
+
+        product.update(productName, price, stockQuantity);
+        return productRepository.save(product);
+    }
+
     @Transactional
     public void deleteProduct(String productId) {
         ProductModel product = productRepository.findByProductId(new ProductId(productId))

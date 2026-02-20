@@ -68,6 +68,12 @@ public class ProductModel extends BaseEntity {
         this.stockQuantity = new StockQuantity(this.stockQuantity.value() + quantity);
     }
 
+    public void update(String productName, BigDecimal price, int stockQuantity) {
+        this.productName = new ProductName(productName);
+        this.price = new Price(price);
+        this.stockQuantity = new StockQuantity(stockQuantity);
+    }
+
     public void markAsDeleted() {
         delete();
     }

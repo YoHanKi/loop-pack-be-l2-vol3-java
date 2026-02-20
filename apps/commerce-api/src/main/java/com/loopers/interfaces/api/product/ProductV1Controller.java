@@ -19,6 +19,28 @@ public class ProductV1Controller implements ProductV1ApiSpec {
 
     private final ProductFacade productFacade;
 
+    @GetMapping("/{productId}")
+    @Override
+    public ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> getProduct(@PathVariable String productId) {
+        ProductInfo info = productFacade.getProduct(productId);
+        return ResponseEntity.ok(ApiResponse.success(ProductV1Dto.ProductResponse.from(info)));
+    }
+
+    @PutMapping("/{productId}")
+    @Override
+    public ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> updateProduct(
+            @PathVariable String productId,
+            @Valid @RequestBody ProductV1Dto.UpdateProductRequest request
+    ) {
+        ProductInfo info = productFacade.updateProduct(
+                productId,
+                request.productName(),
+                request.price(),
+                request.stockQuantity()
+        );
+        return ResponseEntity.ok(ApiResponse.success(ProductV1Dto.ProductResponse.from(info)));
+    }
+
     @PostMapping
     @Override
     public ResponseEntity<ApiResponse<ProductV1Dto.ProductResponse>> createProduct(
