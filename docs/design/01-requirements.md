@@ -339,20 +339,19 @@
 
 ### UC-A09: 상품 수정 (PUT /api-admin/v1/products/{productId})
 
+> **미구현**: 현재 ProductModel은 productName, price, stockQuantity만 수정 가능. brandId 변경은 불가.
+
 #### Main Flow
-1. **요청**: 어드민이 상품 수정 (수정 가능: `productName`, `price`, `stockQty`, `description`, `imageUrl`, `status`)
+1. **요청**: 어드민이 상품 수정 (수정 가능: `productName`, `price`, `stockQuantity`)
 2. **인증**: `X-Loopers-Ldap=loopers.admin` 검증
 3. **상품 조회**:
    - `productId`로 조회
    - 존재하지 않으면 → 404 Not Found
 4. **입력 검증**:
-   - `price >= 0`, `stockQty >= 0`
+   - `price >= 0`, `stockQuantity >= 0`
    - **brandId 변경 시도 확인**: 요청에 brandId가 포함되어 있으면 → 400 Bad Request
-5. **상품 수정**:
-   - UPDATE `product` SET ... `updated_at = NOW()`
-   - `stockQty`는 절대값 SET 방식 (운영 목적)
+5. **상품 수정**: Dirty Checking으로 UPDATE
 6. **응답**: 200 OK
-   - 수정된 상품 정보
 
 #### Exception Flow
 - **E1**: 인증 실패 → 403 Forbidden
