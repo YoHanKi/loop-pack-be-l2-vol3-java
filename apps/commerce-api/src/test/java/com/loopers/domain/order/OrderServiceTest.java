@@ -1,19 +1,24 @@
 package com.loopers.domain.order;
 
+import com.loopers.domain.like.vo.RefMemberId;
+import com.loopers.domain.order.vo.OrderId;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.vo.ProductId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -142,6 +147,70 @@ class OrderServiceTest {
         assertThatThrownBy(() -> new OrderItemRequest("prod1", 0))
                 .isInstanceOf(CoreException.class)
                 .hasFieldOrPropertyWithValue("errorType", ErrorType.BAD_REQUEST);
+    }
+
+    @Test
+    @DisplayName("getMyOrder: 본인 주문 조회 성공")
+    void getMyOrder_success() {
+        // given
+        Long memberId = 1L;
+        String orderId = "550e8400-e29b-41d4-a716-446655440000";
+        OrderModel order = mock(OrderModel.class);
+        when(order.isOwner(memberId)).thenReturn(true);
+        when(orderRepository.findByOrderId(new OrderId(orderId))).thenReturn(Optional.of(order));
+
+        // when
+        OrderModel result = orderService.getMyOrder(memberId, orderId);
+
+        // then
+        assertThat(result).isEqualTo(order);
+    }
+
+    @Test
+    @DisplayName("getMyOrder: 존재하지 않는 주문 → 404")
+    void getMyOrder_notFound_throwsException() {
+        // given
+        String validButNonExistentUuid = "00000000-0000-0000-0000-000000000001";
+        when(orderRepository.findByOrderId(any(OrderId.class))).thenReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> orderService.getMyOrder(1L, validButNonExistentUuid))
+                .isInstanceOf(CoreException.class)
+                .hasFieldOrPropertyWithValue("errorType", ErrorType.NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("getMyOrder: 타인의 주문 조회 시 → 403")
+    void getMyOrder_notOwner_throwsForbidden() {
+        // given
+        Long memberId = 1L;
+        String orderId = "550e8400-e29b-41d4-a716-446655440000";
+        OrderModel order = mock(OrderModel.class);
+        when(order.isOwner(memberId)).thenReturn(false);
+        when(orderRepository.findByOrderId(new OrderId(orderId))).thenReturn(Optional.of(order));
+
+        // when & then
+        assertThatThrownBy(() -> orderService.getMyOrder(memberId, orderId))
+                .isInstanceOf(CoreException.class)
+                .hasFieldOrPropertyWithValue("errorType", ErrorType.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("getMyOrders: 회원의 주문 목록 조회 성공")
+    void getMyOrders_success() {
+        // given
+        Long memberId = 1L;
+        OrderModel order = mock(OrderModel.class);
+        Page<OrderModel> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findByRefMemberId(
+                any(RefMemberId.class), any(), any(), any()
+        )).thenReturn(page);
+
+        // when
+        Page<OrderModel> result = orderService.getMyOrders(memberId, null, null, PageRequest.of(0, 10));
+
+        // then
+        assertThat(result.getContent()).hasSize(1);
     }
 
     private ProductModel mockProduct(String productId, String productName, BigDecimal price, Long id) {

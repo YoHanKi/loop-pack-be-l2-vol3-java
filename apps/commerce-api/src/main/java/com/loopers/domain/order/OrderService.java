@@ -1,5 +1,6 @@
 package com.loopers.domain.order;
 
+import com.loopers.domain.like.vo.RefMemberId;
 import com.loopers.domain.order.vo.OrderId;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
@@ -7,9 +8,12 @@ import com.loopers.domain.product.vo.ProductId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -83,6 +87,21 @@ public class OrderService {
         }
 
         return orderRepository.save(order);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<OrderModel> getMyOrders(Long memberId, LocalDateTime startDateTime, LocalDateTime endDateTime, Pageable pageable) {
+        return orderRepository.findByRefMemberId(new RefMemberId(memberId), startDateTime, endDateTime, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public OrderModel getMyOrder(Long memberId, String orderId) {
+        OrderModel order = orderRepository.findByOrderId(new OrderId(orderId))
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "주문을 찾을 수 없습니다."));
+        if (!order.isOwner(memberId)) {
+            throw new CoreException(ErrorType.FORBIDDEN, "본인의 주문만 조회할 수 있습니다.");
+        }
+        return order;
     }
 
     private Map<String, Integer> aggregateQuantities(List<OrderItemRequest> itemRequests) {

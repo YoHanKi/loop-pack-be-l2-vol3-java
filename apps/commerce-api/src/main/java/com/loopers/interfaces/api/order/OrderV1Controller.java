@@ -6,9 +6,14 @@ import com.loopers.application.order.OrderItemCommand;
 import com.loopers.interfaces.api.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
 
 import java.util.List;
 
@@ -31,6 +36,33 @@ public class OrderV1Controller implements OrderV1ApiSpec {
         OrderInfo info = orderFacade.createOrder(request.memberId(), items);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(OrderV1Dto.OrderResponse.from(info)));
+    }
+
+    @GetMapping
+    @Override
+    public ResponseEntity<ApiResponse<OrderV1Dto.OrderListResponse>> getOrders(
+            @RequestParam Long memberId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            Pageable pageable
+    ) {
+        Page<OrderInfo> orders = orderFacade.getMyOrders(
+                memberId,
+                startDate != null ? startDate.atStartOfDay() : null,
+                endDate != null ? endDate.plusDays(1).atStartOfDay() : null,
+                pageable
+        );
+        return ResponseEntity.ok(ApiResponse.success(OrderV1Dto.OrderListResponse.from(orders)));
+    }
+
+    @GetMapping("/{orderId}")
+    @Override
+    public ResponseEntity<ApiResponse<OrderV1Dto.OrderResponse>> getOrder(
+            @PathVariable String orderId,
+            @RequestParam Long memberId
+    ) {
+        OrderInfo info = orderFacade.getMyOrder(memberId, orderId);
+        return ResponseEntity.ok(ApiResponse.success(OrderV1Dto.OrderResponse.from(info)));
     }
 
     @PatchMapping("/{orderId}/cancel")

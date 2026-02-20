@@ -4,9 +4,12 @@ import com.loopers.domain.order.OrderItemRequest;
 import com.loopers.domain.order.OrderModel;
 import com.loopers.domain.order.OrderService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Component
@@ -28,5 +31,16 @@ public class OrderFacade {
     public OrderInfo cancelOrder(Long memberId, String orderId) {
         OrderModel order = orderService.cancelOrder(memberId, orderId);
         return OrderInfo.from(order);
+    }
+
+    @Transactional(readOnly = true)
+    public OrderInfo getMyOrder(Long memberId, String orderId) {
+        return OrderInfo.from(orderService.getMyOrder(memberId, orderId));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<OrderInfo> getMyOrders(Long memberId, LocalDateTime startDateTime, LocalDateTime endDateTime, Pageable pageable) {
+        return orderService.getMyOrders(memberId, startDateTime, endDateTime, pageable)
+                .map(OrderInfo::from);
     }
 }
