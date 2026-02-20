@@ -8,18 +8,12 @@ public class LikeV1Dto {
 
     public record AddLikeRequest(
             @NotNull(message = "회원 ID는 필수입니다.")
-            Long memberId,
-
-            @NotBlank(message = "상품 ID는 필수입니다.")
-            String productId
+            Long memberId
     ) {}
 
     public record RemoveLikeRequest(
             @NotNull(message = "회원 ID는 필수입니다.")
-            Long memberId,
-
-            @NotBlank(message = "상품 ID는 필수입니다.")
-            String productId
+            Long memberId
     ) {}
 
     public record LikeResponse(

@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import static com.loopers.interfaces.api.like.LikeV1Dto.*;
 
 @RestController
-@RequestMapping("/api/v1/likes")
+@RequestMapping("/api/v1/products/{productId}/likes")
 @RequiredArgsConstructor
 public class LikeV1Controller {
 
@@ -18,15 +18,21 @@ public class LikeV1Controller {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<LikeResponse> addLike(@Valid @RequestBody AddLikeRequest request) {
-        var info = likeFacade.addLike(request.memberId(), request.productId());
+    public ApiResponse<LikeResponse> addLike(
+            @PathVariable String productId,
+            @Valid @RequestBody AddLikeRequest request
+    ) {
+        var info = likeFacade.addLike(request.memberId(), productId);
         return ApiResponse.success(LikeResponse.from(info));
     }
 
     @DeleteMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public ApiResponse<Void> removeLike(@Valid @RequestBody RemoveLikeRequest request) {
-        likeFacade.removeLike(request.memberId(), request.productId());
+    public ApiResponse<Void> removeLike(
+            @PathVariable String productId,
+            @Valid @RequestBody RemoveLikeRequest request
+    ) {
+        likeFacade.removeLike(request.memberId(), productId);
         return ApiResponse.success(null);
     }
 }

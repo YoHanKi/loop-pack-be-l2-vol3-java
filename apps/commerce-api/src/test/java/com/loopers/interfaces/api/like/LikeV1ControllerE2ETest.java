@@ -40,8 +40,8 @@ class LikeV1ControllerE2ETest {
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
-    private String baseUrl() {
-        return "http://localhost:" + port + "/api/v1/likes";
+    private String baseUrl(String productId) {
+        return "http://localhost:" + port + "/api/v1/products/" + productId + "/likes";
     }
 
     @AfterEach
@@ -49,7 +49,7 @@ class LikeV1ControllerE2ETest {
         databaseCleanUp.truncateAllTables();
     }
 
-    @DisplayName("POST /api/v1/likes")
+    @DisplayName("POST /api/v1/products/{productId}/likes")
     @Nested
     class AddLike {
 
@@ -58,13 +58,13 @@ class LikeV1ControllerE2ETest {
         void addLike_success_returns201() {
             // given
             brandService.createBrand("nike", "Nike");
-            var product = productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
+            productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
 
-            var request = new AddLikeRequest(1L, "prod1");
+            var request = new AddLikeRequest(1L);
 
             // when
             var response = restTemplate.postForEntity(
-                    baseUrl(),
+                    baseUrl("prod1"),
                     request,
                     ApiResponse.class
             );
@@ -82,11 +82,11 @@ class LikeV1ControllerE2ETest {
             brandService.createBrand("nike", "Nike");
             productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
 
-            var request = new AddLikeRequest(1L, "prod1");
+            var request = new AddLikeRequest(1L);
 
             // when
-            var firstResponse = restTemplate.postForEntity(baseUrl(), request, ApiResponse.class);
-            var secondResponse = restTemplate.postForEntity(baseUrl(), request, ApiResponse.class);
+            var firstResponse = restTemplate.postForEntity(baseUrl("prod1"), request, ApiResponse.class);
+            var secondResponse = restTemplate.postForEntity(baseUrl("prod1"), request, ApiResponse.class);
 
             // then
             assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -97,11 +97,11 @@ class LikeV1ControllerE2ETest {
         @DisplayName("존재하지 않는 상품에 좋아요 추가 시 404 Not Found 반환")
         void addLike_productNotFound_returns404() {
             // given
-            var request = new AddLikeRequest(1L, "invalid");
+            var request = new AddLikeRequest(1L);
 
             // when
             var response = restTemplate.postForEntity(
-                    baseUrl(),
+                    baseUrl("invalid"),
                     request,
                     ApiResponse.class
             );
@@ -111,7 +111,7 @@ class LikeV1ControllerE2ETest {
         }
     }
 
-    @DisplayName("DELETE /api/v1/likes")
+    @DisplayName("DELETE /api/v1/products/{productId}/likes")
     @Nested
     class RemoveLike {
 
@@ -122,14 +122,14 @@ class LikeV1ControllerE2ETest {
             brandService.createBrand("nike", "Nike");
             productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
 
-            var addRequest = new AddLikeRequest(1L, "prod1");
-            restTemplate.postForEntity(baseUrl(), addRequest, ApiResponse.class);
+            var addRequest = new AddLikeRequest(1L);
+            restTemplate.postForEntity(baseUrl("prod1"), addRequest, ApiResponse.class);
 
-            var removeRequest = new RemoveLikeRequest(1L, "prod1");
+            var removeRequest = new RemoveLikeRequest(1L);
 
             // when
             var response = restTemplate.exchange(
-                    baseUrl(),
+                    baseUrl("prod1"),
                     HttpMethod.DELETE,
                     new HttpEntity<>(removeRequest),
                     ApiResponse.class
@@ -146,11 +146,11 @@ class LikeV1ControllerE2ETest {
             brandService.createBrand("nike", "Nike");
             productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
 
-            var removeRequest = new RemoveLikeRequest(1L, "prod1");
+            var removeRequest = new RemoveLikeRequest(1L);
 
             // when
             var response = restTemplate.exchange(
-                    baseUrl(),
+                    baseUrl("prod1"),
                     HttpMethod.DELETE,
                     new HttpEntity<>(removeRequest),
                     ApiResponse.class
@@ -164,11 +164,11 @@ class LikeV1ControllerE2ETest {
         @DisplayName("존재하지 않는 상품에 좋아요 취소 시 404 Not Found 반환")
         void removeLike_productNotFound_returns404() {
             // given
-            var removeRequest = new RemoveLikeRequest(1L, "invalid");
+            var removeRequest = new RemoveLikeRequest(1L);
 
             // when
             var response = restTemplate.exchange(
-                    baseUrl(),
+                    baseUrl("invalid"),
                     HttpMethod.DELETE,
                     new HttpEntity<>(removeRequest),
                     ApiResponse.class
