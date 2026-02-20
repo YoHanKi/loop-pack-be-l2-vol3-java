@@ -26,6 +26,7 @@
 | 주문 항목 | Order Item | 주문 내 개별 상품 라인 | Order Line, Line Item |
 | 스냅샷 | Snapshot | 주문 시점의 상품 정보 복사본 | Copy, Archive |
 | 삭제 일시 | Deleted At | Soft Delete 타임스탬프 | Removed At |
+| 비관적 락 | Pessimistic Lock | 재고 차감 전 행(row) 잠금 (`SELECT ... FOR UPDATE`) | Exclusive Lock |
 
 ### 상태(Enum)
 
@@ -123,37 +124,32 @@
    - items 배열이 비어있지 않음
    - 각 quantity >= 1
    - 동일 productId가 여러 개 있으면 quantity 합산
-4. **상품 존재 확인**: 각 productId에 대해
-   - product 테이블에서 조회
-   - `deleted_at IS NULL` 확인
-   - 존재하지 않으면 → 404 Not Found
-5. **재고 차감** (동시성 제어):
+4. **재고 차감** (동시성 제어):
    - productId를 오름차순으로 정렬 (데드락 방지)
-   - 각 상품에 대해 조건부 UPDATE 실행:
+   - 각 상품에 대해 **비관적 락** 획득 후 재고 검증 및 차감:
      ```sql
-     UPDATE product
-     SET stock_qty = stock_qty - :quantity, updated_at = NOW()
-     WHERE id = :productId
-       AND deleted_at IS NULL
-       AND stock_qty >= :quantity;
+     -- 1단계: 비관적 락 획득
+     SELECT * FROM products WHERE id = :productId FOR UPDATE;
+     -- 2단계: 재고 검증 (애플리케이션 레이어)
+     -- stock_quantity < :quantity → 409 Conflict
+     -- 3단계: 재고 차감
+     UPDATE products SET stock_quantity = stock_quantity - :quantity WHERE id = :productId;
      ```
-   - affected rows = 0이면 재고 부족 → 전체 롤백 후 409 Conflict
+   - 재고 부족 → 전체 롤백 후 409 Conflict
+5. **상품 존재 확인**: 재고 차감 전 productId로 조회
+   - 존재하지 않으면 → 404 Not Found
 6. **주문 저장**:
-   - `orders` 테이블에 INSERT: `user_id`, `total_amount`, `status=PENDING`, `ordered_at=NOW()`
-   - `total_amount` = Σ(unit_price × quantity)
+   - `orders` 테이블에 INSERT: `ref_member_id`, `order_id(UUID)`, `status=PENDING`
 7. **주문 항목 스냅샷 저장**:
-   - `order_item` 테이블에 각 항목 INSERT:
-     - `order_id`, `product_id`, `product_name`, `brand_id`, `brand_name`
-     - `unit_price`, `quantity`, `line_amount` (= unit_price × quantity)
-     - 선택: `image_url`
+   - `order_items` 테이블에 각 항목 INSERT:
+     - `order_id`, `product_id(스냅샷)`, `product_name(스냅샷)`, `price(스냅샷)`, `quantity`
 8. **응답**: 201 Created
-   - `orderId`, `status`, `orderedAt`, `totalAmount`
-   - `items` 배열 (스냅샷 포함)
+   - `orderId`, `status`, `items` 배열 (스냅샷 포함)
 
 #### Alternate Flow
 - **A1**: 동일 productId 중복
   - quantity를 합산하여 단일 항목으로 처리
-  - 예: `[{productId:1, qty:2}, {productId:1, qty:3}]` → `{productId:1, qty:5}`
+  - 예: `[{productId:"P001", qty:2}, {productId:"P001", qty:3}]` → `{productId:"P001", qty:5}`
 
 #### Exception Flow
 - **E1**: 인증 실패 → 401 Unauthorized
@@ -172,27 +168,26 @@
 3. **주문 조회**:
    - `orderId`로 주문 조회
    - 존재하지 않으면 → 404 Not Found
-4. **소유권 확인**: `order.user_id == user_id` 검증
+4. **소유권 확인**: `order.ref_member_id == user_id` 검증
    - 다르면 → 403 Forbidden
 5. **상태 확인**: `status == PENDING` 확인
-   - CANCELED 또는 다른 상태면 → 409 Conflict (Alternate Flow A1 참조)
+   - CANCELED 상태면 → Alternate Flow A1 (멱등 성공)
 6. **상태 전이**: 같은 트랜잭션 내에서
-   - `orders.status = CANCELED`, `canceled_at = NOW()` UPDATE
+   - `orders.status = CANCELED` UPDATE
 7. **재고 복구**:
-   - `order_item`의 각 항목에 대해:
+   - `order_items`의 각 항목에 대해:
      ```sql
-     UPDATE product
-     SET stock_qty = stock_qty + :quantity, updated_at = NOW()
+     UPDATE products
+     SET stock_quantity = stock_quantity + :quantity
      WHERE id = :productId;
      ```
    - 상품이 삭제되었어도 재고 복구 시도 (soft delete이므로 가능)
 8. **응답**: 200 OK
-   - `orderId`, `status=CANCELED`, `canceledAt`
+   - `orderId`, `status=CANCELED`
 
 #### Alternate Flow
 - **A1**: 이미 CANCELED 상태
-  - 멱등 처리: 200 OK 응답 (재고 복구는 중복 실행하지 않음)
-  - 또는 409 Conflict (정책에 따라 선택, 권장은 200 OK)
+  - 멱등 처리: 200 OK 응답 (재고 복구 중복 실행하지 않음)
 
 #### Exception Flow
 - **E1**: 인증 실패 → 401 Unauthorized
@@ -206,22 +201,22 @@
 ### UC-C04: 좋아요 추가 (POST /api/v1/products/{productId}/likes)
 
 #### Main Flow
-1. **요청**: 사용자가 `productId`로 좋아요 추가 요청
+1. **요청**: 사용자가 `memberId`, `productId`로 좋아요 추가 요청
 2. **인증**: 헤더 검증 → `user_id` 추출
 3. **상품 존재 확인**:
    - `productId`로 상품 조회
    - `deleted_at IS NULL` 확인
    - 존재하지 않으면 → 404 Not Found
-4. **중복 확인**: `(user_id, product_id)` UNIQUE 제약
+4. **중복 확인**: `(ref_member_id, ref_product_id)` UNIQUE 제약
    - 이미 존재하면 → Alternate Flow A1
 5. **좋아요 저장**:
-   - `like` 테이블에 INSERT: `user_id`, `product_id`, `created_at=NOW()`
-6. **응답**: 201 Created (또는 204 No Content)
+   - `likes` 테이블에 INSERT: `ref_member_id`, `ref_product_id`, `created_at=NOW()`
+6. **응답**: 200 OK (기존 또는 신규 좋아요 정보 반환)
 
 #### Alternate Flow
 - **A1**: 이미 좋아요 존재
-  - 멱등 처리: 200 OK 또는 204 No Content (INSERT 스킵)
-  - UNIQUE 제약 위반 catch 후 성공 처리
+  - 멱등 처리: 200 OK (INSERT 스킵, 기존 좋아요 반환)
+  - UNIQUE 제약 위반 catch 후 재조회하여 성공 처리
 
 #### Exception Flow
 - **E1**: 인증 실패 → 401 Unauthorized
@@ -233,19 +228,23 @@
 ### UC-C05: 좋아요 취소 (DELETE /api/v1/products/{productId}/likes)
 
 #### Main Flow
-1. **요청**: 사용자가 `productId`로 좋아요 취소 요청
+1. **요청**: 사용자가 `memberId`, `productId`로 좋아요 취소 요청
 2. **인증**: 헤더 검증 → `user_id` 추출
-3. **좋아요 삭제**:
-   - `DELETE FROM like WHERE user_id = :userId AND product_id = :productId`
-4. **응답**: 204 No Content
+3. **상품 존재 확인**:
+   - `productId`로 상품 조회
+   - 존재하지 않으면 → 404 Not Found
+4. **좋아요 삭제**:
+   - `(ref_member_id, ref_product_id)` 조건으로 조회 후 삭제
+5. **응답**: 204 No Content
 
 #### Alternate Flow
 - **A1**: 좋아요 존재하지 않음
-  - 멱등 처리: 204 No Content (affected rows = 0이어도 성공)
+  - 멱등 처리: 204 No Content (없어도 성공)
 
 #### Exception Flow
 - **E1**: 인증 실패 → 401 Unauthorized
-- **E2**: DB 에러 → 500 Internal Server Error
+- **E2**: 상품 존재하지 않음 → 404 Not Found
+- **E3**: DB 에러 → 500 Internal Server Error
 
 ---
 
@@ -255,12 +254,12 @@
 1. **요청**: 사용자가 자신의 좋아요 목록 조회
 2. **인증**: 헤더 검증 → `user_id` 추출
 3. **조회**:
-   - `like` 테이블에서 `user_id`로 필터링
-   - JOIN `product` ON `like.product_id = product.id`
-   - `product.deleted_at IS NULL` 필터링 (삭제된 상품 제외)
+   - `likes` 테이블에서 `ref_member_id`로 필터링
+   - JOIN `products` ON `likes.ref_product_id = products.id`
+   - `products.deleted_at IS NULL` 필터링 (삭제된 상품 제외)
 4. **페이징**: page, size 파라미터 (선택)
 5. **응답**: 200 OK
-   - products 배열: `productId`, `productName`, `brandName`, `price`, `imageUrl`, `likedAt`
+   - products 배열: `productId`, `productName`, `brandName`, `price`, `likedAt`
 
 #### Alternate Flow
 - **A1**: 좋아요한 상품이 없음
@@ -275,27 +274,24 @@
 
 #### Main Flow
 1. **요청**: 사용자가 상품 목록 조회 (쿼리 파라미터: `brandId`, `sort`, `page`, `size`)
-2. **인증**: 헤더 검증 (선택: 비로그인도 허용 가능, 정책에 따라)
-3. **필터링**:
+2. **필터링**:
    - `deleted_at IS NULL` (삭제된 상품 제외)
-   - `brandId` 제공 시: `product.brand_id = :brandId`
-4. **정렬**:
-   - `latest` (필수): `updated_at DESC`
-   - `price_asc` (선택): `price ASC`
-   - `likes_desc` (선택):
-     - Phase 1: `SELECT ..., (SELECT COUNT(*) FROM like WHERE product_id = product.id) AS like_count ORDER BY like_count DESC`
-     - Phase 2 (병목 시): `product.like_count DESC`
-5. **페이징**: page, size 적용 (기본: page=0, size=20)
-6. **응답**: 200 OK
-   - products 배열: `productId`, `productName`, `brandName`, `price`, `stockQty`, `imageUrl`, `likeCount`(선택)
+   - `brandId` 제공 시: `products.ref_brand_id = :brandId`
+3. **정렬**:
+   - `latest` (기본): `updated_at DESC`
+   - `price_asc`: `price ASC`
+   - `likes_desc`:
+     - LEFT JOIN likes, GROUP BY p.id, COUNT(l.id) DESC
+4. **페이징**: page, size 적용 (기본: page=0, size=20)
+5. **응답**: 200 OK
+   - products 배열: `productId`, `productName`, `brandId`, `brandName`, `price`, `stockQuantity`, `likesCount`
 
 #### Alternate Flow
 - **A1**: 조건에 맞는 상품 없음
   - 빈 배열 반환
 
 #### Exception Flow
-- **E1**: 인증 실패 (인증 필수 정책인 경우) → 401 Unauthorized
-- **E2**: 유효하지 않은 sort 값 → 400 Bad Request
+- **E1**: 유효하지 않은 sort 값 → 400 Bad Request
 
 ---
 
@@ -303,16 +299,15 @@
 
 #### Main Flow
 1. **요청**: 사용자가 `productId`로 상품 상세 조회
-2. **인증**: 헤더 검증 (선택: 비로그인도 허용 가능)
-3. **조회**:
+2. **조회**:
    - `productId`로 상품 조회
    - `deleted_at IS NULL` 확인
-   - JOIN `brand` ON `product.brand_id = brand.id`
+   - Brand 정보 조회 (ref_brand_id → brands 테이블)
    - 존재하지 않으면 → 404 Not Found
-4. **좋아요 수 집계** (선택):
-   - `SELECT COUNT(*) FROM like WHERE product_id = :productId`
-5. **응답**: 200 OK
-   - `productId`, `productName`, `brandId`, `brandName`, `price`, `stockQty`, `description`, `imageUrl`, `likeCount`
+3. **좋아요 수 집계**:
+   - `SELECT COUNT(*) FROM likes WHERE ref_product_id = :productId`
+4. **응답**: 200 OK
+   - `productId`, `productName`, `brandId`, `brandName`, `price`, `stockQuantity`, `likesCount`
 
 #### Exception Flow
 - **E1**: 상품 존재하지 않음 또는 deleted → 404 Not Found
@@ -322,21 +317,18 @@
 ### UC-A08: 상품 등록 (POST /api-admin/v1/products)
 
 #### Main Flow
-1. **요청**: 어드민이 상품 등록 (필드: `productName`, `brandId`, `price`, `stockQty`, `description?`, `imageUrl?`, `status?`)
+1. **요청**: 어드민이 상품 등록 (필드: `productId`, `brandId`, `productName`, `price`, `stockQuantity`)
 2. **인증**: `X-Loopers-Ldap=loopers.admin` 검증
    - 실패 시 → 403 Forbidden
 3. **입력 검증**:
-   - `price >= 0`, `stockQty >= 0`
+   - `price >= 0`, `stockQuantity >= 0`
    - `productName` 비어있지 않음
 4. **브랜드 존재 확인**:
    - `brandId`로 브랜드 조회
    - `deleted_at IS NULL` 확인
    - 존재하지 않으면 → 404 Not Found
-5. **상품 저장**:
-   - `product` 테이블에 INSERT
-   - `status` 기본값: `ACTIVE` (정책에 따라)
+5. **상품 저장**: `products` 테이블에 INSERT
 6. **응답**: 201 Created
-   - `productId`, `productName`, `brandId`, `price`, `stockQty`, ...
 
 #### Exception Flow
 - **E1**: 인증 실패 → 403 Forbidden
@@ -380,8 +372,8 @@
    - 존재하지 않으면 → 404 Not Found
 4. **연쇄 삭제** (Soft Delete):
    - 같은 트랜잭션 내에서:
-     - `UPDATE brand SET deleted_at = NOW() WHERE id = :brandId`
-     - `UPDATE product SET deleted_at = NOW() WHERE brand_id = :brandId AND deleted_at IS NULL`
+     - `UPDATE brands SET deleted_at = NOW() WHERE id = :brandId`
+     - `UPDATE products SET deleted_at = NOW() WHERE ref_brand_id = :brandId AND deleted_at IS NULL`
 5. **응답**: 204 No Content
 
 #### Exception Flow
@@ -406,7 +398,7 @@
   - 주문 상태 불일치 (주문 취소 시 status != PENDING)
 - **멱등 성공**:
   - 좋아요 추가/취소: 이미 존재/없어도 성공
-  - 주문 취소: 이미 CANCELED면 성공 (권장)
+  - 주문 취소: 이미 CANCELED면 성공 처리 (권장)
 
 ---
 
@@ -417,10 +409,21 @@
 - **주문 취소**: 상태 전이 + 재고 복구 → 단일 트랜잭션
 - **브랜드 삭제**: 브랜드 soft delete + 상품 연쇄 soft delete → 단일 트랜잭션
 
-### 동시성 제어
-- **재고 차감**: 조건부 원자 UPDATE (`WHERE stock_qty >= :qty`)
-- **데드락 방지**: productId 오름차순 정렬로 락 순서 고정
-- **좋아요 중복**: UNIQUE 제약 (`user_id`, `product_id`)으로 DB 레벨 보장
+### 동시성 제어 전략
+
+| 도메인 | 경합 수준 | 중요도 | 전략 |
+|--------|-----------|--------|------|
+| 재고 (stock) | **높음** | **비즈니스 핵심** | **비관적 락** (`SELECT ... FOR UPDATE`) |
+| 좋아요 (like) | 낮음 | 참고 데이터 | DB UNIQUE 제약 (`uk_likes_member_product`) |
+
+**재고 차감 (비관적 락)**:
+- `SELECT ... FOR UPDATE`로 행 잠금 후 재고 검증 및 차감
+- 데드락 방지: productId 오름차순 정렬로 락 획득 순서 고정
+- 재고 부족 시: 예외 발생 → 트랜잭션 전체 롤백 → 409 Conflict
+
+**좋아요 중복 방지 (DB 제약)**:
+- UNIQUE 제약 (`ref_member_id`, `ref_product_id`)으로 DB 레벨 최종 방어
+- 경합 발생 시: `DataIntegrityViolationException` catch → 기존 좋아요 재조회 → 멱등 성공
 
 ### 일관성 수준
 - **강한 일관성**: 재고 수량 (과판매 절대 불가)
@@ -432,58 +435,47 @@
 
 ### Risk-01: Soft Delete 필터 누락
 - **리스크**: 모든 조회 쿼리에 `deleted_at IS NULL` 필터 필요, 누락 시 삭제된 항목 노출
-- **증상**: 고객에게 삭제된 상품/브랜드가 보임, 주문 생성 시 삭제된 상품 선택 가능
 - **완화책**:
-  - Repository 기본 조건/전역 스코프 적용 (JPA `@Where`, QueryDSL BooleanExpression)
-  - 코드 리뷰 체크리스트에 추가
+  - Repository Native Query에 `deleted_at IS NULL` 조건 포함
   - E2E 테스트에 삭제 시나리오 포함
 
 ### Risk-02: 좋아요 수 집계 성능
-- **리스크**: `likes_desc` 정렬 시 COUNT 집계가 느려질 수 있음 (상품 수 × 좋아요 수 증가 시)
-- **증상**: 상품 목록 조회 API 응답 시간 증가 (1초 이상)
+- **리스크**: `likes_desc` 정렬 시 COUNT 집계가 느려질 수 있음
 - **완화책**:
-  - Phase 1: COUNT 집계 (정확성 우선)
-  - Phase 2: `product.like_count` 컬럼 도입 (약한 일관성 허용)
+  - Phase 1: LEFT JOIN + GROUP BY + COUNT (정확성 우선, 현재 구현)
+  - Phase 2: `products.like_count` 컬럼 도입 (약한 일관성 허용)
   - 전환 시점: APM 모니터링으로 병목 관측 후 결정
 
 ### Risk-03: 재고 차감 데드락
-- **리스크**: 다품목 주문 시 productId 순서가 다르면 데드락 발생 가능
-- **증상**: 주문 생성 실패, DB 로그에 deadlock 감지
+- **리스크**: 다품목 주문 시 productId 순서가 다르면 비관적 락 데드락 가능
 - **완화책**:
-  - productId 오름차순 정렬로 락 순서 고정
-  - 재시도 로직 (exponential backoff)
-  - 모니터링: 데드락 발생 횟수 추적
+  - productId 오름차순 정렬로 락 순서 고정 (모든 트랜잭션이 동일한 순서로 락 획득)
+  - DB 데드락 타임아웃 설정 (innodb_lock_wait_timeout)
+  - 데드락 발생 시 자동 롤백 → 클라이언트 재시도
 
 ### Risk-04: 주문 스냅샷 불완전
 - **리스크**: 스냅샷에 필수 정보 누락 시, 상품/브랜드 삭제 후 주문 조회 불가
-- **증상**: 주문 내역에 "알 수 없는 상품" 표시, 고객 불만
 - **완화책**:
-  - 최소 스냅샷 필드 명시: `product_name`, `brand_name`, `unit_price`, `quantity`
+  - 최소 스냅샷 필드: `product_id`, `product_name`, `price`, `quantity`
   - E2E 테스트: 상품 삭제 후 주문 조회 시나리오
 
 ### Risk-05: latest 정렬 조작 가능
 - **리스크**: `updated_at` 기준 정렬 시, 운영자가 단순 수정으로 상단 노출 조작 가능
-- **증상**: 특정 상품이 부당하게 상단 노출, 공정성 문제
 - **완화책**:
   - Phase 1: `updated_at` 사용 (단순함 우선)
-  - Phase 2: `published_at` 또는 `last_restocked_at` 컬럼 도입 (의미 있는 갱신만 반영)
-  - 정책: 어드민 수정 시 경고 메시지 또는 별도 "노출 순서" 필드
+  - Phase 2: `published_at` 또는 `last_restocked_at` 컬럼 도입
 
 ### Risk-06: 권한 검증 누락
 - **리스크**: owner check 누락 시, 타 유저의 주문/좋아요 접근 가능
-- **증상**: 보안 취약점, 개인정보 노출
 - **완화책**:
   - 모든 "내 리소스" API에 owner check 필수화
-  - AOP 또는 Spring Security 필터로 공통화
   - E2E 테스트: 타 유저 접근 시도 시나리오 (403 확인)
 
 ### Risk-07: 주문 취소 멱등성 불명확
 - **리스크**: 이미 CANCELED 상태일 때 200 vs 409 정책 불명확
-- **증상**: 클라이언트 재시도 로직 혼란
 - **완화책**:
-  - 명확한 정책 수립: 멱등 성공 (200 OK) 권장
-  - API 문서에 멱등성 명시
-  - 클라이언트 가이드 제공
+  - 명확한 정책: 멱등 성공 (200 OK) 채택
+  - OrderModel.cancel()에서 이미 CANCELED면 그대로 반환 (예외 없음)
 
 ---
 
@@ -496,24 +488,25 @@
 - **연쇄 삭제**: 브랜드 삭제 시 해당 브랜드의 모든 상품도 soft delete 처리
 
 ### 2. 정렬 기준
-- **latest**: `updated_at DESC` (상품 갱신 반영, 추후 `published_at` 확장 가능)
+- **latest**: `updated_at DESC` (상품 갱신 반영)
 - **price_asc**: `price ASC`
-- **likes_desc**: 기본은 COUNT 집계, 병목 시 `like_count` 컬럼 도입
+- **likes_desc**: LEFT JOIN likes, COUNT(l.id) DESC (Phase 1, 병목 시 like_count 컬럼 도입)
 
 ### 3. 좋아요 집계 정합성
-- **기본안(Phase 1)**: 조회 시 COUNT 집계 (정확성 우선)
-- **확장안(Phase 2)**: `product.like_count` 컬럼 유지 (성능 우선, 약한 일관성 허용)
+- **기본안(Phase 1)**: 조회 시 COUNT 집계 (정확성 우선, 현재 구현)
+- **확장안(Phase 2)**: `products.like_count` 컬럼 유지 (성능 우선, 약한 일관성 허용)
 - **전환 시점**: 병목 관측 후 결정
 
 ### 4. 재고 차감 동시성 제어
-- **방식**: 조건부 원자 UPDATE (`UPDATE ... WHERE stock_qty >= :qty`)
-- **데드락 완화**: productId 오름차순 정렬로 락 순서 고정
+- **방식**: 비관적 락 (`SELECT ... FOR UPDATE`)
+- **근거**: 재고는 경합이 심하고 비즈니스적으로 중요한 자원. 과판매는 절대 허용 불가. 낙관적 접근(조건부 UPDATE)보다 명시적 락으로 직렬화 보장
+- **데드락 방지**: productId 오름차순 정렬로 락 순서 고정
 - **실패 처리**: 재고 부족 시 전체 롤백, 409 Conflict 응답
+- **좋아요와의 차이**: 좋아요는 경합이 낮고 중복 1건은 치명적이지 않아 UNIQUE 제약만으로 충분
 
 ### 5. 주문 스냅샷 범위
-- **최소 스냅샷**: `product_name`, `brand_name`, `unit_price`, `quantity`, `line_amount`
-- **선택 필드**: `image_url`, `product_id`, `brand_id` (참조용)
-- **제외**: 상품 상세 메타데이터 (description 등)
+- **최소 스냅샷**: `product_id(비즈니스 ID)`, `product_name`, `price`, `quantity`
+- **제외**: brand_name, line_amount (총 금액은 getTotalPrice()로 계산), image_url
 
 ### 6. 주문 상태
 - **PENDING**: 주문 생성 직후 (결제 전 상태)
@@ -521,13 +514,13 @@
 - **허용 전이**: `PENDING → CANCELED` (이번 범위에서는 결제 상태 제외)
 
 ### 7. 멱등성 정책
-- **좋아요 추가(POST)**: 이미 존재해도 200/204 성공
+- **좋아요 추가(POST)**: 이미 존재해도 200 성공 (기존 좋아요 반환)
 - **좋아요 취소(DELETE)**: 없어도 204 성공
-- **주문 취소(PATCH)**: 이미 CANCELED면 성공 처리 (권장)
+- **주문 취소(PATCH)**: 이미 CANCELED면 성공 처리
 
 ### 8. 권한/접근 제어
-- **내 좋아요 목록**: 본인만 조회 가능 (URI: `/api/v1/users/me/likes`)
-- **내 주문 목록/상세**: 본인만 조회 가능 (owner check 필수)
+- **내 좋아요 목록**: 본인만 조회 가능
+- **내 주문 목록/상세**: 본인만 조회 가능 (isOwner() check 필수)
 - **어드민 API**: `X-Loopers-Ldap=loopers.admin` 검증
 
 ---
