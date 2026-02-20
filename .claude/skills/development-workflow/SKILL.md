@@ -1,3 +1,10 @@
+---
+name: development-workflow
+description: TDD 워크플로우 (Red→Green→Refactor), 증강 코딩 원칙, 개발자 승인 프로세스. 개발 작업 시 필수 참조
+user-invocable: true
+allowed-tools: Read, Grep, Bash, Edit, Write
+---
+
 # 개발 워크플로우
 
 ## 진행 Workflow - 증강 코딩
@@ -22,6 +29,8 @@
 - 불확실한 부분은 가정하지 않고 질문
 - 완료 기준을 명확히 설정
 
+---
+
 ## 개발 Workflow - TDD (Red > Green > Refactor)
 
 ### 전체 흐름
@@ -34,6 +43,8 @@ Refactor Phase (코드 개선)
     ↓
 반복
 ```
+
+---
 
 ### 1. Red Phase: 실패하는 테스트 먼저 작성
 
@@ -83,6 +94,8 @@ class Register {
 - [ ] @DisplayName이 명확한가?
 - [ ] 테스트가 실패하는가? (Red 확인)
 
+---
+
 ### 2. Green Phase: 테스트를 통과하는 코드 작성
 
 #### 목표
@@ -103,7 +116,7 @@ public class MemberService {
     private final PasswordHasher passwordHasher;
 
     @Transactional
-    public MemberModel register(String memberId, String rawPassword, String email, 
+    public MemberModel register(String memberId, String rawPassword, String email,
                                  String birthDate, String name, Gender gender) {
         // 최소 구현: 테스트 통과를 위한 코드
         String hashedPassword = passwordHasher.hash(rawPassword);
@@ -117,6 +130,8 @@ public class MemberService {
 - [ ] 모든 테스트가 통과하는가? (Green 확인)
 - [ ] 불필요한 코드가 없는가?
 - [ ] 오버엔지니어링을 하지 않았는가?
+
+---
 
 ### 3. Refactor Phase: 불필요한 코드 제거 및 품질 개선
 
@@ -180,7 +195,7 @@ public class MemberService {
 public class MemberService {
     public MemberModel register(String memberId, String password, String email, /* ... */) {
         // Value Object 생성 시 자동 검증
-        MemberModel member = new MemberModel(memberId, password, email, /* ... */);
+        MemberModel member = MemberModel.create(memberId, password, email, /* ... */);
         return memberRepository.save(member);
     }
 }
@@ -203,93 +218,7 @@ public record MemberId(String value) {
 - [ ] 성능 최적화를 고려했는가?
 - [ ] 모든 테스트가 통과하는가?
 
-## 테스트 작성 원칙
-
-### 3A 원칙 (Arrange-Act-Assert)
-모든 테스트는 3A 원칙을 따릅니다:
-
-```java
-@Test
-void testExample() {
-    // Arrange: 테스트 데이터 및 환경 준비
-    String memberId = "testuser1";
-    String password = "Test1234!";
-
-    // Act: 테스트 대상 실행
-    MemberModel result = memberService.register(memberId, password, /* ... */);
-
-    // Assert: 결과 검증
-    assertThat(result).isNotNull();
-    assertThat(result.getMemberId().value()).isEqualTo(memberId);
-}
-```
-
-### 테스트 레벨별 작성 가이드
-
-#### 1. 단위 테스트 (Unit Test)
-- **대상**: Value Object, 도메인 로직
-- **특징**: 외부 의존성 없음, 빠른 실행
-- **작성 시점**: Red Phase 시작
-
-```java
-@DisplayName("회원 ID 생성 시,")
-@Nested
-class CreateMemberId {
-    @DisplayName("영문+숫자 10자 이내가 아니면 예외 발생")
-    @Test
-    void throwsException_whenInvalidFormat() {
-        // arrange
-        String invalidId = "invalid_id!";
-
-        // act & assert
-        assertThrows(CoreException.class, () -> new MemberId(invalidId));
-    }
-}
-```
-
-#### 2. 통합 테스트 (Integration Test)
-- **대상**: Service + Repository
-- **특징**: Spring Context, TestContainers
-- **작성 시점**: Green Phase
-
-```java
-@SpringBootTest
-class MemberServiceIntegrationTest {
-    @Autowired
-    private MemberService memberService;
-
-    @Autowired
-    private DatabaseCleanUp databaseCleanUp;
-
-    @AfterEach
-    void tearDown() {
-        databaseCleanUp.truncateAllTables();
-    }
-
-    @Test
-    void testRegister() {
-        // arrange, act, assert
-    }
-}
-```
-
-#### 3. E2E 테스트 (End-to-End Test)
-- **대상**: REST API 전체 흐름
-- **특징**: 실제 HTTP 요청/응답
-- **작성 시점**: Green Phase 완료 후
-
-```java
-@SpringBootTest(webEnvironment = RANDOM_PORT)
-class MemberV1ApiE2ETest {
-    @Autowired
-    private TestRestTemplate testRestTemplate;
-
-    @Test
-    void testRegisterApi() {
-        // arrange, act, assert
-    }
-}
-```
+---
 
 ## 주의사항
 
@@ -367,65 +296,24 @@ void testSomething() {
 }
 ```
 
+---
+
 ### 2. Recommendation (권장사항)
 
 #### E2E 테스트 작성
-```java
-@SpringBootTest(webEnvironment = RANDOM_PORT)
-class MemberV1ApiE2ETest {
-    @Autowired
-    private TestRestTemplate testRestTemplate;
-
-    @Test
-    void testRegisterApi() {
-        // arrange
-        MemberV1Dto.RegisterRequest request = new MemberV1Dto.RegisterRequest(/* ... */);
-
-        // act
-        ResponseEntity<ApiResponse<MemberV1Dto.MemberResponse>> response =
-            testRestTemplate.exchange(
-                "/api/v1/members/register",
-                HttpMethod.POST,
-                new HttpEntity<>(request),
-                new ParameterizedTypeReference<>() {}
-            );
-
-        // assert
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().data()).isNotNull();
-    }
-}
-```
+- 실제 HTTP 요청/응답 검증
+- TestRestTemplate 사용
+- 전체 시나리오 테스트
 
 #### 재사용 가능한 객체 설계
-```java
-// ✅ Value Object로 재사용성 확보
-public record MemberId(String value) {
-    // 검증 로직 캡슐화
-}
-
-// ✅ 여러 곳에서 재사용
-public class MemberModel {
-    private MemberId memberId;
-}
-
-public interface MemberRepository {
-    Optional<MemberModel> findByMemberId(MemberId memberId);
-}
-```
+- Value Object 활용
+- 불변 객체 우선
+- 정적 팩토리 메서드 제공
 
 #### 성능 최적화 제안
-```java
-// N+1 문제 해결 제안
-@Query("SELECT m FROM MemberModel m JOIN FETCH m.orders WHERE m.memberId = :memberId")
-Optional<MemberModel> findByMemberIdWithOrders(@Param("memberId") MemberId memberId);
-
-// 캐싱 적용 제안
-@Cacheable(value = "members", key = "#memberId")
-public MemberModel getMemberByMemberId(String memberId) {
-    // ...
-}
-```
+- N+1 문제 해결 (Fetch Join, Batch Size)
+- 인덱스 설계
+- 캐싱 전략 (Redis)
 
 #### HTTP Client 파일 작성
 ```http
@@ -441,10 +329,9 @@ Content-Type: application/json
   "name": "테스트유저",
   "gender": "MALE"
 }
-
-### 회원 조회
-GET http://localhost:8080/api/v1/members/testuser1
 ```
+
+---
 
 ### 3. Priority (우선순위)
 
@@ -467,6 +354,8 @@ GET http://localhost:8080/api/v1/members/testuser1
 - 네이밍 컨벤션 일관성
 - 아키텍처 패턴 준수
 
+---
+
 ## 코드 리뷰 체크리스트
 
 ### 기능 구현
@@ -479,13 +368,11 @@ GET http://localhost:8080/api/v1/members/testuser1
 - [ ] 통합 테스트가 작성되었는가?
 - [ ] E2E 테스트가 작성되었는가?
 - [ ] 모든 테스트가 통과하는가?
-- [ ] 테스트 커버리지가 충분한가?
 
 ### 코드 품질
 - [ ] 코드가 읽기 쉬운가?
 - [ ] 중복 코드가 없는가?
 - [ ] 네이밍이 명확한가?
-- [ ] 주석이 필요한 곳에만 있는가?
 - [ ] Unused import가 없는가?
 
 ### 아키텍처
@@ -502,88 +389,3 @@ GET http://localhost:8080/api/v1/members/testuser1
 - [ ] 입력 검증이 적절한가?
 - [ ] SQL Injection 위험이 없는가?
 - [ ] 민감 정보가 로그에 남지 않는가?
-
-## Git Workflow
-
-### 브랜치 전략
-```
-main (프로덕션)
-  ↑
-develop (개발)
-  ↑
-feature/기능명 (기능 개발)
-```
-
-### 커밋 메시지 규칙
-```
-feat: 새로운 기능 추가
-fix: 버그 수정
-refactor: 코드 리팩토링
-test: 테스트 코드 추가/수정
-docs: 문서 수정
-style: 코드 포맷팅
-chore: 빌드 설정 등
-```
-
-### 예시
-```bash
-# 기능 브랜치 생성
-git checkout -b feature/member-register
-
-# 커밋
-git commit -m "feat: 회원 가입 기능 추가"
-git commit -m "test: 회원 가입 통합 테스트 추가"
-git commit -m "refactor: MemberService 코드 개선"
-
-# develop에 머지
-git checkout develop
-git merge feature/member-register
-```
-
-## 문서화
-
-### 필수 문서
-1. **README.md**: 프로젝트 소개 및 시작 가이드
-2. **CLAUDE.md**: 전체 개발 가이드
-3. **API 문서**: Swagger UI 자동 생성
-4. **HTTP Client 파일**: `.http` 디렉토리
-
-### 코드 주석
-- **JavaDoc**: public API에만 작성
-- **인라인 주석**: 복잡한 비즈니스 로직에만 작성
-- **코드로 설명 가능한 경우**: 주석 지양
-
-### 예시
-```java
-/**
- * 회원을 등록합니다.
- * 
- * @param memberId 회원 ID (영문+숫자, 1~10자)
- * @param password 비밀번호 (8~16자, 영문 대소문자+숫자+특수문자)
- * @return 등록된 회원 정보
- * @throws CoreException 이미 가입된 ID인 경우
- */
-public MemberModel register(String memberId, String password, /* ... */) {
-    // ...
-}
-```
-
-## 트러블슈팅
-
-### 테스트 실패 시
-1. **에러 메시지 확인**: 정확한 실패 원인 파악
-2. **디버깅**: 중단점 설정 및 단계별 실행
-3. **로그 확인**: 애플리케이션 로그 분석
-4. **테스트 격리**: 다른 테스트와의 간섭 확인
-
-### 빌드 실패 시
-1. **의존성 확인**: Gradle 의존성 문제
-2. **컴파일 에러**: 문법 오류 수정
-3. **캐시 삭제**: `./gradlew clean`
-4. **IDE 재시작**: IntelliJ IDEA 재시작
-
-### 성능 문제 시
-1. **쿼리 분석**: N+1 문제 확인
-2. **프로파일링**: JProfiler, VisualVM 사용
-3. **로그 분석**: 느린 쿼리 확인
-4. **인덱스 추가**: 적절한 DB 인덱스 생성

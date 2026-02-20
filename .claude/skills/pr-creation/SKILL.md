@@ -1,3 +1,11 @@
+---
+name: pr-creation
+description: PR 문서 작성 3단계 워크플로우 (volume-n.md → question.md → pr.md). git 로그 분석, 의사결정 질문, Mermaid 다이어그램. PR 작성 시 필수 사용
+disable-model-invocation: true
+user-invocable: true
+allowed-tools: Read, Grep, Bash, Edit, Write
+---
+
 # PR 생성 가이드
 
 ## 개요
