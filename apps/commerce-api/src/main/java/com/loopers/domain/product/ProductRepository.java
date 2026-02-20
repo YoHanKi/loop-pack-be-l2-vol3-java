@@ -4,6 +4,7 @@ import com.loopers.domain.product.vo.ProductId;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface ProductRepository {
@@ -30,4 +31,14 @@ public interface ProductRepository {
      * 상품의 좋아요 수를 조회합니다.
      */
     long countLikes(Long productId);
+
+    /**
+     * 브랜드 DB PK로 삭제되지 않은 상품 목록을 조회합니다.
+     */
+    List<ProductModel> findByRefBrandId(Long brandId);
+
+    /**
+     * DB PK로 상품을 조회합니다.
+     */
+    Optional<ProductModel> findById(Long id);
 }

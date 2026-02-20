@@ -1,7 +1,10 @@
 package com.loopers.domain.brand;
 
 import com.loopers.domain.brand.vo.BrandId;
+import com.loopers.domain.product.ProductModel;
+import com.loopers.domain.product.ProductService;
 import com.loopers.infrastructure.brand.BrandJpaRepository;
+import com.loopers.infrastructure.product.ProductJpaRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
@@ -15,6 +18,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,7 +36,13 @@ class BrandServiceIntegrationTest {
     private BrandService brandService;
 
     @Autowired
+    private ProductService productService;
+
+    @Autowired
     private BrandJpaRepository brandJpaRepository;
+
+    @Autowired
+    private ProductJpaRepository productJpaRepository;
 
     @Autowired
     private BrandRepository spyBrandRepository;
@@ -125,22 +135,54 @@ class BrandServiceIntegrationTest {
                 .isEqualTo(ErrorType.NOT_FOUND);
     }
 
-    // TODO: Product 도메인 구현 후 추가할 테스트
-    // @Test
-    // @DisplayName("상품이 참조하고 있는 브랜드 삭제 시 예외 발생")
-    // void deleteBrand_hasProducts_throwsException() {
-    //     // given
-    //     String brandId = "samsung";
-    //     brandService.createBrand(brandId, "Samsung");
-    //     // productService.createProduct(..., brandId, ...); // Product 생성
-    //
-    //     // when & then
-    //     assertThatThrownBy(() -> brandService.deleteBrand(brandId))
-    //             .isInstanceOf(CoreException.class)
-    //             .hasMessageContaining("해당 브랜드를 참조하는 상품이 존재하여 삭제할 수 없습니다.")
-    //             .extracting("errorType")
-    //             .isEqualTo(ErrorType.CONFLICT);
-    // }
+    @Test
+    @DisplayName("브랜드 삭제 시 해당 브랜드의 상품도 연쇄 soft delete")
+    void deleteBrand_cascadeDeletesProducts() {
+        // given
+        String brandId = "samsung";
+        BrandModel brand = brandService.createBrand(brandId, "Samsung");
+
+        ProductModel product1 = productService.createProduct("prod1", brandId, "Product 1", new BigDecimal("10000"), 10);
+        ProductModel product2 = productService.createProduct("prod2", brandId, "Product 2", new BigDecimal("20000"), 20);
+
+        assertThat(product1.isDeleted()).isFalse();
+        assertThat(product2.isDeleted()).isFalse();
+
+        // when
+        brandService.deleteBrand(brandId);
+
+        // then - 브랜드 삭제됨
+        BrandModel deletedBrand = brandJpaRepository.findByBrandId(new BrandId(brandId)).orElseThrow();
+        assertThat(deletedBrand.isDeleted()).isTrue();
+
+        // then - 상품도 연쇄 삭제됨
+        ProductModel deletedProduct1 = productJpaRepository.findById(product1.getId()).orElseThrow();
+        ProductModel deletedProduct2 = productJpaRepository.findById(product2.getId()).orElseThrow();
+        assertThat(deletedProduct1.isDeleted()).isTrue();
+        assertThat(deletedProduct2.isDeleted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("이미 삭제된 상품은 브랜드 삭제 시 영향받지 않음")
+    void deleteBrand_alreadyDeletedProduct_notAffected() {
+        // given
+        String brandId = "lg";
+        BrandModel brand = brandService.createBrand(brandId, "LG");
+
+        ProductModel product = productService.createProduct("prodlg", brandId, "LG Product", new BigDecimal("50000"), 5);
+        productService.deleteProduct("prodlg"); // 미리 삭제
+
+        // when
+        brandService.deleteBrand(brandId);
+
+        // then - 브랜드는 삭제됨
+        BrandModel deletedBrand = brandJpaRepository.findByBrandId(new BrandId(brandId)).orElseThrow();
+        assertThat(deletedBrand.isDeleted()).isTrue();
+
+        // then - 상품 삭제 상태는 그대로
+        ProductModel deletedProduct = productJpaRepository.findById(product.getId()).orElseThrow();
+        assertThat(deletedProduct.isDeleted()).isTrue();
+    }
 
     @TestConfiguration
     static class SpyConfig {

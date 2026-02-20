@@ -163,4 +163,17 @@ public class ProductRepositoryImpl implements ProductRepository {
 
         return ((Number) query.getSingleResult()).longValue();
     }
+
+    @Override
+    public List<ProductModel> findByRefBrandId(Long brandId) {
+        String sql = "SELECT * FROM products WHERE ref_brand_id = :brandId AND deleted_at IS NULL";
+        return entityManager.createNativeQuery(sql, ProductModel.class)
+                .setParameter("brandId", brandId)
+                .getResultList();
+    }
+
+    @Override
+    public Optional<ProductModel> findById(Long id) {
+        return productJpaRepository.findById(id);
+    }
 }
