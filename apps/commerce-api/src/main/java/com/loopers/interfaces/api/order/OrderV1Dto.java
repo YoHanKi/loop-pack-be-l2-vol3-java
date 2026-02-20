@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.data.domain.Page;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -81,6 +82,24 @@ public class OrderV1Dto {
                     item.price(),
                     item.quantity(),
                     item.totalPrice()
+            );
+        }
+    }
+
+    public record OrderListResponse(
+            List<OrderResponse> content,
+            long totalElements,
+            int page,
+            int size
+    ) {
+        public static OrderListResponse from(Page<OrderInfo> page) {
+            return new OrderListResponse(
+                    page.getContent().stream()
+                            .map(OrderResponse::from)
+                            .toList(),
+                    page.getTotalElements(),
+                    page.getNumber(),
+                    page.getSize()
             );
         }
     }
