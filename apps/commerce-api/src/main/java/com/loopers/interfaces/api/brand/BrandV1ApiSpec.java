@@ -13,6 +13,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 public interface BrandV1ApiSpec {
 
     @Operation(
+            summary = "브랜드 단건 조회",
+            description = "brandId로 브랜드 정보를 조회합니다."
+    )
+    ApiResponse<BrandV1Dto.BrandResponse> getBrand(
+            @Parameter(description = "브랜드 ID") @PathVariable String brandId
+    );
+
+    @Operation(
             summary = "브랜드 생성",
             description = "새로운 브랜드를 생성합니다."
     )

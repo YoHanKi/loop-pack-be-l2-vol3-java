@@ -14,6 +14,13 @@ public class BrandV1Controller implements BrandV1ApiSpec {
 
     private final BrandFacade brandFacade;
 
+    @Override
+    @GetMapping("/{brandId}")
+    public ApiResponse<BrandV1Dto.BrandResponse> getBrand(@PathVariable String brandId) {
+        BrandInfo info = brandFacade.getBrand(brandId);
+        return ApiResponse.success(BrandV1Dto.BrandResponse.fromInfo(info));
+    }
+
     @PostMapping
     @Override
     public ApiResponse<BrandV1Dto.BrandResponse> createBrand(

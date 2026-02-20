@@ -17,6 +17,12 @@ public class BrandFacade {
         return BrandInfo.from(brand);
     }
 
+    @Transactional(readOnly = true)
+    public BrandInfo getBrand(String brandId) {
+        BrandModel brand = brandService.getBrand(brandId);
+        return BrandInfo.from(brand);
+    }
+
     @Transactional
     public void deleteBrand(String brandId) {
         brandService.deleteBrand(brandId);
