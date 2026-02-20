@@ -339,8 +339,6 @@
 
 ### UC-A09: 상품 수정 (PUT /api-admin/v1/products/{productId})
 
-> **미구현**: 현재 ProductModel은 productName, price, stockQuantity만 수정 가능. brandId 변경은 불가.
-
 #### Main Flow
 1. **요청**: 어드민이 상품 수정 (수정 가능: `productName`, `price`, `stockQuantity`)
 2. **인증**: `X-Loopers-Ldap=loopers.admin` 검증
