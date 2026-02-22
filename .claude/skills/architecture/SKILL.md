@@ -423,3 +423,70 @@ com.loopers
 - ❌ 순환 참조
 - ❌ 도메인 로직 누수 (Controller에 비즈니스 로직)
 - ❌ God Service (하나의 Service에 모든 로직)
+
+---
+
+## Facade 계층 규칙 (확정 결정)
+
+### 어노테이션
+- Facade: **`@Component`** 사용 (절대 `@Service` 사용 금지)
+- Service: **`@Service`** 사용
+
+### Facade 의존성 규칙
+```
+✅ Facade → Service (허용)
+❌ Facade → Repository 직접 의존 (금지)
+❌ Facade → Facade 의존 (금지)
+```
+
+Facade가 여러 도메인을 조율할 때는 반드시 각 도메인의 Service를 통해야 함.
+
+### 크로스 도메인 오케스트레이션은 Facade 책임
+```java
+// ✅ 올바른 예: BrandFacade에서 cascade delete 처리
+@Transactional
+public void deleteBrand(String brandId) {
+    BrandModel brand = brandService.deleteBrand(brandId);       // 브랜드 soft delete
+    productService.deleteProductsByBrandRefId(brand.getId());   // 연쇄 상품 soft delete
+}
+// ❌ 잘못된 예: BrandService 내부에서 ProductRepository 직접 접근하여 cascade 처리
+```
+
+도메인 간 연쇄 처리(cascade)가 필요하면 Service에 두지 말고 Facade에서 조율할 것.
+
+---
+
+## 도메인 간 의존성 규칙 (확정 결정)
+
+### Model과 Repository 인터페이스: 자기 도메인 VO만 사용
+```java
+// ✅ OrderModel은 order.vo만 import
+import com.loopers.domain.order.vo.OrderId;
+import com.loopers.domain.order.vo.RefMemberId;  // order 도메인 소유
+
+// ❌ OrderModel이 like.vo를 import하는 것은 금지
+import com.loopers.domain.like.vo.RefMemberId;
+```
+
+### Service: 타 도메인 Repository 호출 시 해당 도메인 VO import 허용
+```java
+// ✅ LikeService가 ProductRepository를 호출하기 위해 ProductId VO import
+import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.product.vo.ProductId;  // 관계가 있으므로 허용
+
+// ✅ ProductService가 BrandRepository를 호출하기 위해 BrandId VO import
+import com.loopers.domain.brand.BrandRepository;
+import com.loopers.domain.brand.vo.BrandId;  // 관계가 있으므로 허용
+```
+
+Service 계층에서 타 도메인 Repository를 직접 사용하는 것은 **트랜잭션 원자성 보장** 목적으로 허용됨.
+단, 이는 의도적 설계 결정이며, 단순 조회 위임이라면 타 도메인 Service를 통하는 것을 검토할 것.
+
+### 참조 VO (RefOOOId) 소유권
+- `RefMemberId`, `RefProductId` 등 타 도메인의 PK를 참조하는 VO는 **사용하는 도메인이 자기 vo 패키지에 별도 정의**
+- 예: `order.vo.RefMemberId`, `like.vo.RefMemberId` — 같은 이름이어도 별개의 독립 VO
+- 한 도메인의 VO를 다른 도메인 Model/Repository가 import하는 것은 도메인 경계 위반
+
+### Converter 소유권
+- 각 도메인의 VO에 대응하는 Converter는 해당 도메인의 VO를 사용하는 Entity 맥락에 맞게 별도 정의
+- 예: `RefMemberIdConverter` (like.vo용), `OrderRefMemberIdConverter` (order.vo용)

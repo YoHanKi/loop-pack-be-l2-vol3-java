@@ -120,6 +120,11 @@ Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 - ❌ null-safety 위반 금지 (Optional 활용)
 - ❌ println 코드 남기지 말 것 (`@Slf4j` 사용)
 - ❌ 테스트 임의 삭제/수정 금지 (`@Disabled`, assertion 약화 금지)
+- ❌ `var` 키워드 사용 금지 — 반드시 명시적 타입으로 선언
+- ❌ `EntityManager` 직접 사용 금지 — JpaRepository `@Query`로 대체
+- ❌ Facade에서 Repository 직접 의존 금지 — 반드시 Service 경유
+- ❌ Facade → Facade 의존 금지
+- ❌ 클래스/record 내부에 nested 클래스/record 정의 금지 — 별도 파일로 분리
 
 ### Recommendation (권장사항)
 - ✅ 실제 API를 호출해 확인하는 E2E 테스트 작성
@@ -190,11 +195,17 @@ Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 
 - **레이어 의존성 방향**: `Controller → Facade → Service → Repository` (단방향), Infrastructure는 Domain 인터페이스 구현 (Port-Adapter).
 - **Thin Facade 원칙**: Facade는 Service만 호출, 비즈니스 로직은 Service에 위임(조율만 담당).
+- **Facade 어노테이션**: Facade는 `@Component`, Service는 `@Service` — 절대 혼용 금지.
+- **Facade 의존성**: Facade → Service만 허용. Facade → Repository 직접 의존, Facade → Facade 의존은 금지.
+- **크로스 도메인 오케스트레이션**: 여러 도메인을 걸치는 연쇄 처리(cascade 등)는 Service가 아닌 Facade에서 조율.
 - **DTO vs Info vs Model 분리**: DTO(HTTP 계층) → Info(Application 결과 VO) → Model(Domain Entity), 각 레이어 독립성 유지.
 - **Service 책임**: Service는 Repository를 통한 조회 및 저장, 비즈니스 규칙 검증, @Transactional 경계 관리.
+- **Service 크로스 도메인**: Service는 트랜잭션 원자성을 위해 타 도메인 Repository를 직접 사용 가능. 이때 해당 도메인 VO import도 허용.
 - **Repository Pattern**: Domain에 Repository 인터페이스(Port), Infrastructure에 구현체(Adapter), Domain이 Infrastructure를 모름.
+- **도메인 VO 소유권**: Model과 Repository 인터페이스는 자기 도메인 vo만 사용. `RefMemberId` 같은 참조 VO는 사용하는 도메인이 자기 vo 패키지에 별도 정의.
 - **Info 변환**: Facade에서 Model → Info 변환, Controller는 Model 노출 금지(Info만 사용), 레이어 격리 유지.
 - **컴포넌트 책임**: Controller(HTTP), Facade(유스케이스 조합), Service(비즈니스 로직 + 조회), Repository(영속화).
+- **메서드 네이밍**: 타 도메인 PK를 파라미터로 받는 메서드는 `RefId` 접미사 사용 (`DbId` 금지). 예: `getProductByRefId(Long id)`.
 
 ---
 

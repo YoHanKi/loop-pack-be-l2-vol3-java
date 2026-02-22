@@ -39,6 +39,15 @@ allowed-tools: Read, Grep
 
 #### Service
 - 도메인 용어 사용: `register`, `getMemberByMemberId`, `updateProfile`, `withdraw`
+- 타 도메인 PK(DB id)를 파라미터로 받는 메서드: **`RefId` 접미사** 사용 (`DbId` 사용 금지)
+  ```java
+  // ✅ 올바름
+  ProductModel getProductByRefId(Long id)
+  void deleteProductsByBrandRefId(Long brandDbId)
+  BrandModel getBrandByRefId(Long id)
+  // ❌ 금지
+  ProductModel getProductByDbId(Long id)
+  ```
 
 #### Controller
 - RESTful 원칙: GET (조회), POST (생성), PUT (전체 수정), PATCH (부분 수정), DELETE (삭제)
@@ -401,6 +410,21 @@ public record Email(String address) {
 5. **Unused Import**: 사용하지 않는 import 제거
 6. **Raw Type**: 제네릭 타입 명시
 7. **Exception Swallowing**: 예외를 무시하지 말 것
+8. **`var` 키워드 사용 금지**: 반드시 명시적 타입 사용
+   ```java
+   // ❌ 금지
+   var product = productRepository.findById(id);
+   // ✅ 허용
+   Optional<ProductModel> product = productRepository.findById(id);
+   ```
+9. **중첩 클래스/레코드 정의 금지**: 클래스나 record 내부에 다른 record/class 정의 금지 → 별도 파일로 분리
+   ```java
+   // ❌ 금지
+   public class OrderFacade {
+       public record OrderCommand(String productId, int qty) {}
+   }
+   // ✅ 허용: OrderCommand.java 별도 파일로 생성
+   ```
 
 ### ✅ Best Practices
 1. **불변 객체 선호**: `record`, `final` 활용
