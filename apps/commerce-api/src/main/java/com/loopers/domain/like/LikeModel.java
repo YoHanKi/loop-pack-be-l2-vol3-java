@@ -1,8 +1,8 @@
 package com.loopers.domain.like;
 
 import com.loopers.domain.BaseEntity;
-import com.loopers.domain.like.vo.RefMemberId;
-import com.loopers.domain.like.vo.RefProductId;
+import com.loopers.domain.common.vo.RefMemberId;
+import com.loopers.domain.common.vo.RefProductId;
 import com.loopers.infrastructure.jpa.converter.RefMemberIdConverter;
 import com.loopers.infrastructure.jpa.converter.RefProductIdConverter;
 import jakarta.persistence.*;

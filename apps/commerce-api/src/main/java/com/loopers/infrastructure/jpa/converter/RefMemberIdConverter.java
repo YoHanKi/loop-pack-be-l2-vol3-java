@@ -1,6 +1,6 @@
 package com.loopers.infrastructure.jpa.converter;
 
-import com.loopers.domain.like.vo.RefMemberId;
+import com.loopers.domain.common.vo.RefMemberId;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 

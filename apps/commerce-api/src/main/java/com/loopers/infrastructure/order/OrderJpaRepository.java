@@ -1,6 +1,6 @@
 package com.loopers.infrastructure.order;
 
-import com.loopers.domain.like.vo.RefMemberId;
+import com.loopers.domain.common.vo.RefMemberId;
 import com.loopers.domain.order.OrderModel;
 import com.loopers.domain.order.vo.OrderId;
 import org.springframework.data.domain.Page;

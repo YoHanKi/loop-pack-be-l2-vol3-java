@@ -4,7 +4,7 @@ import com.loopers.domain.BaseEntity;
 import com.loopers.domain.product.vo.Price;
 import com.loopers.domain.product.vo.ProductId;
 import com.loopers.domain.product.vo.ProductName;
-import com.loopers.domain.product.vo.RefBrandId;
+import com.loopers.domain.common.vo.RefBrandId;
 import com.loopers.domain.product.vo.StockQuantity;
 import com.loopers.infrastructure.jpa.converter.PriceConverter;
 import com.loopers.infrastructure.jpa.converter.ProductIdConverter;

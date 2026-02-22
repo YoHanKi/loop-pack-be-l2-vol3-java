@@ -1,8 +1,8 @@
 package com.loopers.infrastructure.like;
 
 import com.loopers.domain.like.LikeModel;
-import com.loopers.domain.like.vo.RefMemberId;
-import com.loopers.domain.like.vo.RefProductId;
+import com.loopers.domain.common.vo.RefMemberId;
+import com.loopers.domain.common.vo.RefProductId;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
