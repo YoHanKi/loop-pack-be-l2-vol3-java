@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 
 @Slf4j
@@ -24,23 +25,23 @@ public class JobListener {
 
     @AfterJob
     void afterJob(JobExecution jobExecution) {
-        var startTime = jobExecution.getExecutionContext().getLong("startTime");
-        var endTime = System.currentTimeMillis();
+        long startTime = jobExecution.getExecutionContext().getLong("startTime");
+        long endTime = System.currentTimeMillis();
 
-        var startDateTime = Instant.ofEpochMilli(startTime)
+        LocalDateTime startDateTime = Instant.ofEpochMilli(startTime)
             .atZone(ZoneId.systemDefault())
             .toLocalDateTime();
-        var endDateTime = Instant.ofEpochMilli(endTime)
+        LocalDateTime endDateTime = Instant.ofEpochMilli(endTime)
             .atZone(ZoneId.systemDefault())
             .toLocalDateTime();
 
-        var totalTime = endTime - startTime;
-        var duration = Duration.ofMillis(totalTime);
-        var hours = duration.toHours();
-        var minutes = duration.toMinutes() % 60;
-        var seconds = duration.getSeconds() % 60;
+        long totalTime = endTime - startTime;
+        Duration duration = Duration.ofMillis(totalTime);
+        long hours = duration.toHours();
+        long minutes = duration.toMinutes() % 60;
+        long seconds = duration.getSeconds() % 60;
 
-        var message = String.format(
+        String message = String.format(
             """
                 *Start Time:* %s
                 *End Time:* %s

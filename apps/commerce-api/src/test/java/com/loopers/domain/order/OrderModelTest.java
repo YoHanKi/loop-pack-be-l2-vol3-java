@@ -23,8 +23,8 @@ class OrderModelTest {
         void create_order_success() {
             // given
             Long memberId = 1L;
-            var item1 = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 2);
-            var item2 = OrderItemModel.create("prod2", "Product 2", new BigDecimal("20000"), 1);
+            OrderItemModel item1 = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 2);
+            OrderItemModel item2 = OrderItemModel.create("prod2", "Product 2", new BigDecimal("20000"), 1);
             List<OrderItemModel> items = List.of(item1, item2);
 
             // when
@@ -56,8 +56,8 @@ class OrderModelTest {
         void getTotalAmount() {
             // given
             Long memberId = 1L;
-            var item1 = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 2); // 20000
-            var item2 = OrderItemModel.create("prod2", "Product 2", new BigDecimal("20000"), 1); // 20000
+            OrderItemModel item1 = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 2); // 20000
+            OrderItemModel item2 = OrderItemModel.create("prod2", "Product 2", new BigDecimal("20000"), 1); // 20000
             OrderModel order = OrderModel.create(memberId, List.of(item1, item2));
 
             // when
@@ -77,7 +77,7 @@ class OrderModelTest {
         void cancel_fromPending_success() {
             // given
             Long memberId = 1L;
-            var item = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 1);
+            OrderItemModel item = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 1);
             OrderModel order = OrderModel.create(memberId, List.of(item));
 
             // when
@@ -92,7 +92,7 @@ class OrderModelTest {
         void cancel_alreadyCanceled_idempotent() {
             // given
             Long memberId = 1L;
-            var item = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 1);
+            OrderItemModel item = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 1);
             OrderModel order = OrderModel.create(memberId, List.of(item));
             order.cancel();
 
@@ -113,7 +113,7 @@ class OrderModelTest {
         void isOwner_correctMember_returnsTrue() {
             // given
             Long memberId = 1L;
-            var item = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 1);
+            OrderItemModel item = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 1);
             OrderModel order = OrderModel.create(memberId, List.of(item));
 
             // when
@@ -128,7 +128,7 @@ class OrderModelTest {
         void isOwner_wrongMember_returnsFalse() {
             // given
             Long memberId = 1L;
-            var item = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 1);
+            OrderItemModel item = OrderItemModel.create("prod1", "Product 1", new BigDecimal("10000"), 1);
             OrderModel order = OrderModel.create(memberId, List.of(item));
 
             // when

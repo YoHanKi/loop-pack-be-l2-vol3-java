@@ -7,6 +7,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.test.JobLauncherTestUtils;
 import org.springframework.batch.test.context.SpringBatchTest;
@@ -46,7 +48,7 @@ class DemoJobE2ETest {
         jobLauncherTestUtils.setJob(job);
 
         // act
-        var jobExecution = jobLauncherTestUtils.launchJob();
+        JobExecution jobExecution = jobLauncherTestUtils.launchJob();
 
         // assert
         assertAll(
@@ -62,10 +64,10 @@ class DemoJobE2ETest {
         jobLauncherTestUtils.setJob(job);
 
         // act
-        var jobParameters = new JobParametersBuilder()
+        JobParameters jobParameters = new JobParametersBuilder()
             .addLocalDate("requestDate", LocalDate.now())
             .toJobParameters();
-        var jobExecution = jobLauncherTestUtils.launchJob(jobParameters);
+        JobExecution jobExecution = jobLauncherTestUtils.launchJob(jobParameters);
 
         // assert
         assertAll(

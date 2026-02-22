@@ -15,6 +15,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 import java.math.BigDecimal;
 
@@ -60,10 +61,10 @@ class LikeV1ControllerE2ETest {
             brandService.createBrand("nike", "Nike");
             productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
 
-            var request = new AddLikeRequest(1L);
+            AddLikeRequest request = new AddLikeRequest(1L);
 
             // when
-            var response = restTemplate.postForEntity(
+            ResponseEntity<ApiResponse> response = restTemplate.postForEntity(
                     baseUrl("prod1"),
                     request,
                     ApiResponse.class
@@ -82,11 +83,11 @@ class LikeV1ControllerE2ETest {
             brandService.createBrand("nike", "Nike");
             productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
 
-            var request = new AddLikeRequest(1L);
+            AddLikeRequest request = new AddLikeRequest(1L);
 
             // when
-            var firstResponse = restTemplate.postForEntity(baseUrl("prod1"), request, ApiResponse.class);
-            var secondResponse = restTemplate.postForEntity(baseUrl("prod1"), request, ApiResponse.class);
+            ResponseEntity<ApiResponse> firstResponse = restTemplate.postForEntity(baseUrl("prod1"), request, ApiResponse.class);
+            ResponseEntity<ApiResponse> secondResponse = restTemplate.postForEntity(baseUrl("prod1"), request, ApiResponse.class);
 
             // then
             assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -97,10 +98,10 @@ class LikeV1ControllerE2ETest {
         @DisplayName("존재하지 않는 상품에 좋아요 추가 시 404 Not Found 반환")
         void addLike_productNotFound_returns404() {
             // given
-            var request = new AddLikeRequest(1L);
+            AddLikeRequest request = new AddLikeRequest(1L);
 
             // when
-            var response = restTemplate.postForEntity(
+            ResponseEntity<ApiResponse> response = restTemplate.postForEntity(
                     baseUrl("invalid"),
                     request,
                     ApiResponse.class
@@ -122,13 +123,13 @@ class LikeV1ControllerE2ETest {
             brandService.createBrand("nike", "Nike");
             productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
 
-            var addRequest = new AddLikeRequest(1L);
+            AddLikeRequest addRequest = new AddLikeRequest(1L);
             restTemplate.postForEntity(baseUrl("prod1"), addRequest, ApiResponse.class);
 
-            var removeRequest = new RemoveLikeRequest(1L);
+            RemoveLikeRequest removeRequest = new RemoveLikeRequest(1L);
 
             // when
-            var response = restTemplate.exchange(
+            ResponseEntity<ApiResponse> response = restTemplate.exchange(
                     baseUrl("prod1"),
                     HttpMethod.DELETE,
                     new HttpEntity<>(removeRequest),
@@ -146,10 +147,10 @@ class LikeV1ControllerE2ETest {
             brandService.createBrand("nike", "Nike");
             productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
 
-            var removeRequest = new RemoveLikeRequest(1L);
+            RemoveLikeRequest removeRequest = new RemoveLikeRequest(1L);
 
             // when
-            var response = restTemplate.exchange(
+            ResponseEntity<ApiResponse> response = restTemplate.exchange(
                     baseUrl("prod1"),
                     HttpMethod.DELETE,
                     new HttpEntity<>(removeRequest),
@@ -164,10 +165,10 @@ class LikeV1ControllerE2ETest {
         @DisplayName("존재하지 않는 상품에 좋아요 취소 시 404 Not Found 반환")
         void removeLike_productNotFound_returns404() {
             // given
-            var removeRequest = new RemoveLikeRequest(1L);
+            RemoveLikeRequest removeRequest = new RemoveLikeRequest(1L);
 
             // when
-            var response = restTemplate.exchange(
+            ResponseEntity<ApiResponse> response = restTemplate.exchange(
                     baseUrl("invalid"),
                     HttpMethod.DELETE,
                     new HttpEntity<>(removeRequest),

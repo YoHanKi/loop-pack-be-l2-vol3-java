@@ -1,6 +1,7 @@
 package com.loopers.interfaces.api.like;
 
 import com.loopers.application.like.LikeFacade;
+import com.loopers.application.like.LikeInfo;
 import com.loopers.interfaces.api.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +23,7 @@ public class LikeV1Controller {
             @PathVariable String productId,
             @Valid @RequestBody AddLikeRequest request
     ) {
-        var info = likeFacade.addLike(request.memberId(), productId);
+        LikeInfo info = likeFacade.addLike(request.memberId(), productId);
         return ApiResponse.success(LikeResponse.from(info));
     }
 

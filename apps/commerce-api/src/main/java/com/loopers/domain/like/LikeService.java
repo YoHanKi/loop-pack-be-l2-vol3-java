@@ -2,6 +2,7 @@ package com.loopers.domain.like;
 
 import com.loopers.domain.like.vo.RefMemberId;
 import com.loopers.domain.like.vo.RefProductId;
+import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.vo.ProductId;
 import com.loopers.support.error.CoreException;
@@ -23,7 +24,7 @@ public class LikeService {
     @Transactional
     public LikeModel addLike(Long memberId, String productId) {
         // 상품 존재 확인
-        var product = productRepository.findByProductId(new ProductId(productId))
+        ProductModel product = productRepository.findByProductId(new ProductId(productId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
 
         RefMemberId refMemberId = new RefMemberId(memberId);
@@ -51,7 +52,7 @@ public class LikeService {
     @Transactional
     public void removeLike(Long memberId, String productId) {
         // 상품 존재 확인
-        var product = productRepository.findByProductId(new ProductId(productId))
+        ProductModel product = productRepository.findByProductId(new ProductId(productId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
 
         RefMemberId refMemberId = new RefMemberId(memberId);
