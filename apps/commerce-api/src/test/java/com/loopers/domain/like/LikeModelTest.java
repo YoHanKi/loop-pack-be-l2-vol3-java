@@ -1,7 +1,7 @@
 package com.loopers.domain.like;
 
-import com.loopers.domain.like.vo.RefMemberId;
-import com.loopers.domain.like.vo.RefProductId;
+import com.loopers.domain.common.vo.RefMemberId;
+import com.loopers.domain.common.vo.RefProductId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

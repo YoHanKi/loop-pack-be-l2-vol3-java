@@ -1,6 +1,6 @@
 package com.loopers.domain.order;
 
-import com.loopers.domain.like.vo.RefMemberId;
+import com.loopers.domain.common.vo.RefMemberId;
 import com.loopers.domain.order.vo.OrderId;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;

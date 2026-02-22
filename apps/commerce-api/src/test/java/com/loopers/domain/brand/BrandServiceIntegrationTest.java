@@ -1,5 +1,6 @@
 package com.loopers.domain.brand;
 
+import com.loopers.application.brand.BrandFacade;
 import com.loopers.domain.brand.vo.BrandId;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductService;
@@ -34,6 +35,9 @@ class BrandServiceIntegrationTest {
 
     @Autowired
     private BrandService brandService;
+
+    @Autowired
+    private BrandFacade brandFacade;
 
     @Autowired
     private ProductService productService;
@@ -136,11 +140,11 @@ class BrandServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("브랜드 삭제 시 해당 브랜드의 상품도 연쇄 soft delete")
+    @DisplayName("브랜드 삭제 시 해당 브랜드의 상품도 연쇄 soft delete (BrandFacade 경유)")
     void deleteBrand_cascadeDeletesProducts() {
         // given
         String brandId = "samsung";
-        BrandModel brand = brandService.createBrand(brandId, "Samsung");
+        brandService.createBrand(brandId, "Samsung");
 
         ProductModel product1 = productService.createProduct("prod1", brandId, "Product 1", new BigDecimal("10000"), 10);
         ProductModel product2 = productService.createProduct("prod2", brandId, "Product 2", new BigDecimal("20000"), 20);
@@ -148,8 +152,8 @@ class BrandServiceIntegrationTest {
         assertThat(product1.isDeleted()).isFalse();
         assertThat(product2.isDeleted()).isFalse();
 
-        // when
-        brandService.deleteBrand(brandId);
+        // when - cascade는 Facade 책임
+        brandFacade.deleteBrand(brandId);
 
         // then - 브랜드 삭제됨
         BrandModel deletedBrand = brandJpaRepository.findByBrandId(new BrandId(brandId)).orElseThrow();

@@ -337,7 +337,7 @@ class MemberServiceIntegrationTest {
             );
 
             // act
-            MemberModel foundMember = memberJpaRepository.findByMemberId(new MemberId(VALID_MEMBER_ID)).orElse(null);
+            MemberModel foundMember = spyMemberRepository.findByMemberId(new MemberId(VALID_MEMBER_ID)).orElse(null);
 
             // assert
             assertAll(
@@ -361,7 +361,7 @@ class MemberServiceIntegrationTest {
             String nonExistentMemberId = "nonexist1";
 
             // act
-            MemberModel foundMember = memberJpaRepository.findByMemberId(new MemberId(nonExistentMemberId)).orElse(null);
+            MemberModel foundMember = spyMemberRepository.findByMemberId(new MemberId(nonExistentMemberId)).orElse(null);
 
             // assert
             assertThat(foundMember).isNull();

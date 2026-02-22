@@ -1,6 +1,7 @@
 package com.loopers.interfaces.api.brand;
 
 import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.interfaces.api.ApiResponse.Metadata.Result;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -48,7 +49,7 @@ class BrandV1ControllerE2ETest {
         assertAll(
                 () -> assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK),
                 () -> assertThat(createResponse.getBody()).isNotNull(),
-                () -> assertThat(createResponse.getBody().success()).isEqualTo(true)
+                () -> assertThat(createResponse.getBody().meta().result()).isEqualTo(Result.SUCCESS)
         );
 
         // when - 브랜드 삭제
@@ -63,7 +64,7 @@ class BrandV1ControllerE2ETest {
         assertAll(
                 () -> assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.OK),
                 () -> assertThat(deleteResponse.getBody()).isNotNull(),
-                () -> assertThat(deleteResponse.getBody().success()).isEqualTo(true)
+                () -> assertThat(deleteResponse.getBody().meta().result()).isEqualTo(Result.SUCCESS)
         );
     }
 
@@ -85,7 +86,7 @@ class BrandV1ControllerE2ETest {
         assertAll(
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT),
                 () -> assertThat(response.getBody()).isNotNull(),
-                () -> assertThat(response.getBody().success()).isEqualTo(false)
+                () -> assertThat(response.getBody().meta().result()).isEqualTo(Result.FAIL)
         );
     }
 
@@ -94,7 +95,7 @@ class BrandV1ControllerE2ETest {
     void deleteBrand_notFound_returns404() {
         // when
         ResponseEntity<ApiResponse> response = restTemplate.exchange(
-                "/api/v1/brands/nonexistent",
+                "/api/v1/brands/notexist",
                 HttpMethod.DELETE,
                 null,
                 ApiResponse.class
@@ -104,7 +105,7 @@ class BrandV1ControllerE2ETest {
         assertAll(
                 () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND),
                 () -> assertThat(response.getBody()).isNotNull(),
-                () -> assertThat(response.getBody().success()).isEqualTo(false)
+                () -> assertThat(response.getBody().meta().result()).isEqualTo(Result.FAIL)
         );
     }
 

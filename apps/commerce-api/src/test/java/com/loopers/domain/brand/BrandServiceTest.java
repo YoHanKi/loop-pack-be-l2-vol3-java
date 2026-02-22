@@ -2,7 +2,6 @@ package com.loopers.domain.brand;
 
 import com.loopers.domain.brand.vo.BrandId;
 import com.loopers.domain.brand.vo.BrandName;
-import com.loopers.domain.product.ProductRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import org.junit.jupiter.api.DisplayName;
@@ -12,13 +11,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,9 +24,6 @@ class BrandServiceTest {
 
     @Mock
     private BrandRepository brandRepository;
-
-    @Mock
-    private ProductRepository productRepository;
 
     @InjectMocks
     private BrandService brandService;
@@ -84,7 +78,6 @@ class BrandServiceTest {
 
         when(brandRepository.findByBrandId(any(BrandId.class))).thenReturn(Optional.of(mockBrand));
         when(brandRepository.save(any(BrandModel.class))).thenReturn(mockBrand);
-        when(productRepository.findByRefBrandId(anyLong())).thenReturn(List.of());
 
         // when
         brandService.deleteBrand(brandId);

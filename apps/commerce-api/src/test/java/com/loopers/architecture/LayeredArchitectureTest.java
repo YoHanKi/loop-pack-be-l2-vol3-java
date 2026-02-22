@@ -1,15 +1,20 @@
 package com.loopers.architecture;
 
 import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.tngtech.archunit.library.Architectures;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 
@@ -148,6 +153,29 @@ class LayeredArchitectureTest {
                     .resideInAnyPackage("com.loopers.infrastructure..")
                     .andShould().haveSimpleNameNotEndingWith("Converter") // Converter는 예외
                 .because("Service는 Repository 인터페이스를 통해 데이터에 접근해야 합니다");
+
+        rule.check(classes);
+    }
+
+    @Test
+    @DisplayName("domain.common.vo 패키지에는 Ref*Id 형식의 참조 VO만 허용")
+    void common_vo_should_only_contain_reference_value_objects() {
+        ArchCondition<JavaClass> haveRefIdName = new ArchCondition<>("have simple name matching Ref*Id pattern") {
+            @Override
+            public void check(JavaClass item, ConditionEvents events) {
+                boolean matches = item.getSimpleName().matches("Ref[A-Z][a-zA-Z]+Id");
+                if (!matches) {
+                    events.add(SimpleConditionEvent.violated(item,
+                            item.getSimpleName() + " does not match Ref*Id pattern in domain.common.vo"));
+                }
+            }
+        };
+
+        ArchRule rule = classes()
+                .that().resideInAPackage("com.loopers.domain.common.vo")
+                .should(haveRefIdName)
+                .because("domain.common.vo 패키지는 FK 참조용 Ref*Id VO만 허용합니다. " +
+                        "비즈니스 로직이 있는 VO는 각 도메인 vo 패키지에 정의하세요.");
 
         rule.check(classes);
     }

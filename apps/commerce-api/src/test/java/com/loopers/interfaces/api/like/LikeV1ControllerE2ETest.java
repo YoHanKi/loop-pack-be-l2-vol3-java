@@ -3,6 +3,7 @@ package com.loopers.interfaces.api.like;
 import com.loopers.domain.brand.BrandService;
 import com.loopers.domain.product.ProductService;
 import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.interfaces.api.ApiResponse.Metadata.Result;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -73,7 +74,7 @@ class LikeV1ControllerE2ETest {
             // then
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
             assertThat(response.getBody()).isNotNull();
-            assertThat(response.getBody()).extracting("success").isEqualTo(true);
+            assertThat(response.getBody().meta().result()).isEqualTo(Result.SUCCESS);
         }
 
         @Test
