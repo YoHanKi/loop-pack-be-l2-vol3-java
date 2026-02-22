@@ -1,5 +1,6 @@
 package com.loopers.domain.product;
 
+import com.loopers.domain.brand.BrandModel;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.brand.vo.BrandId;
 import com.loopers.domain.product.vo.ProductId;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -28,7 +30,7 @@ public class ProductService {
         }
 
         // 브랜드 존재 확인 및 PK 획득
-        var brand = brandRepository.findByBrandId(new BrandId(brandId))
+        BrandModel brand = brandRepository.findByBrandId(new BrandId(brandId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."));
         Long refBrandId = brand.getId();
 
@@ -65,7 +67,7 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
-    public ProductModel getProductByDbId(Long id) {
+    public ProductModel getProductByRefId(Long id) {
         return productRepository.findById(id)
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 상품이 존재하지 않습니다."));
     }
@@ -75,10 +77,24 @@ public class ProductService {
         // brandId가 제공되면 Brand PK로 변환
         Long refBrandId = null;
         if (brandId != null && !brandId.isBlank()) {
-            var brand = brandRepository.findByBrandId(new BrandId(brandId))
+            BrandModel brand = brandRepository.findByBrandId(new BrandId(brandId))
                     .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."));
             refBrandId = brand.getId();
         }
         return productRepository.findProducts(refBrandId, sortBy, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public long countLikes(Long productId) {
+        return productRepository.countLikes(productId);
+    }
+
+    @Transactional
+    public void deleteProductsByBrandRefId(Long brandDbId) {
+        List<ProductModel> products = productRepository.findByRefBrandId(brandDbId);
+        for (ProductModel product : products) {
+            product.markAsDeleted();
+            productRepository.save(product);
+        }
     }
 }
