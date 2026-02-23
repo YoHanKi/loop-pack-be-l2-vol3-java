@@ -28,4 +28,21 @@ public record ProductInfo(
                 likesCount
         );
     }
+
+    public static ProductInfo from(ProductModel product) {
+        return new ProductInfo(
+                product.getId(),
+                product.getProductId().value(),
+                product.getRefBrandId().value(),
+                product.getProductName().value(),
+                product.getPrice().value(),
+                product.getStockQuantity().value(),
+                null,
+                0L
+        );
+    }
+
+    public ProductInfo enrich(BrandInfo brand, long likesCount) {
+        return new ProductInfo(id, productId, refBrandId, productName, price, stockQuantity, brand, likesCount);
+    }
 }
