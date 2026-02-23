@@ -1,6 +1,6 @@
 package com.loopers.interfaces.api.member;
 
-import com.loopers.application.member.MemberFacade;
+import com.loopers.application.member.MemberApp;
 import com.loopers.application.member.MemberInfo;
 import com.loopers.interfaces.api.ApiResponse;
 import jakarta.validation.Valid;
@@ -18,12 +18,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/members")
 public class MemberV1Controller implements MemberV1ApiSpec {
 
-    private final MemberFacade memberFacade;
+    private final MemberApp memberApp;
 
     @PostMapping("/register")
     @Override
     public ApiResponse<MemberV1Dto.MemberResponse> register(@Valid @RequestBody MemberV1Dto.RegisterRequest request) {
-        MemberInfo info = memberFacade.register(
+        MemberInfo info = memberApp.register(
             request.memberId(),
             request.password(),
             request.email(),
@@ -42,7 +42,7 @@ public class MemberV1Controller implements MemberV1ApiSpec {
             @RequestHeader("X-Loopers-LoginId") String loginId,
             @RequestHeader("X-Loopers-LoginPw") String loginPw
     ) {
-        MemberInfo info = memberFacade.authenticate(loginId, loginPw);
+        MemberInfo info = memberApp.authenticate(loginId, loginPw);
 
         MemberV1Dto.MeResponse response = MemberV1Dto.MeResponse.fromInfo(info);
         return ApiResponse.success(response);
@@ -55,7 +55,7 @@ public class MemberV1Controller implements MemberV1ApiSpec {
             @RequestHeader("X-Loopers-LoginPw") String loginPw,
             @Valid @RequestBody MemberV1Dto.ChangePasswordRequest request
     ) {
-        memberFacade.changePassword(loginId, loginPw,
+        memberApp.changePassword(loginId, loginPw,
                 request.currentPassword(), request.newPassword());
         return ApiResponse.success(null);
     }

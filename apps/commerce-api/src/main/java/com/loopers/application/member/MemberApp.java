@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 @RequiredArgsConstructor
 @Component
-public class MemberFacade {
+public class MemberApp {
     private final MemberService memberService;
 
     public MemberInfo register(String memberId, String password, String email,

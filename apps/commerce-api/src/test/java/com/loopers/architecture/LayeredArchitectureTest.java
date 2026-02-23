@@ -25,12 +25,13 @@ import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
  * <pre>
  * Interfaces Layer (Controller, Dto)
  *     ↓
- * Application Layer (Facade, Info)
+ * Application Layer (App, Facade, Info)
  *     ↓
  * Domain Layer (Model, Reader, Service, Repository)
  *     ↑
  * Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
  * </pre>
+ * App: 단일 도메인 유스케이스. Facade: 2개 이상 App 조합 시에만 사용.
  */
 @DisplayName("레이어드 아키텍처 의존성 규칙")
 class LayeredArchitectureTest {
@@ -103,7 +104,7 @@ class LayeredArchitectureTest {
                 .whereLayer("Infrastructure").mayOnlyBeAccessedByLayers("Domain");
 
         ArchRule rule = architecture
-                .because("컴포넌트(Service, Repository, Facade) 간 단방향 의존성을 검증합니다. " +
+                .because("컴포넌트(Service, Repository, App, Facade) 간 단방향 의존성을 검증합니다. " +
                         "(데이터 타입(VO/Enum/Entity)은 검증 대상에서 제외)");
 
         rule.check(classes);
@@ -122,14 +123,28 @@ class LayeredArchitectureTest {
                     .andShould().haveSimpleNameEndingWith("Service")
                     .orShould().haveSimpleNameEndingWith("Repository")
                     .orShould().haveSimpleNameEndingWith("RepositoryImpl")
-                .because("Controller는 Facade를 통해서만 하위 레이어에 접근해야 합니다");
+                .because("Controller는 App 또는 Facade를 통해서만 하위 레이어에 접근해야 합니다");
 
         rule.check(classes);
     }
 
     @Test
-    @DisplayName("Application 컴포넌트는 Infrastructure 컴포넌트를 직접 의존하면 안 됨")
-    void application_components_should_not_depend_on_infrastructure_components() {
+    @DisplayName("Application 컴포넌트(App)는 Infrastructure 컴포넌트를 직접 의존하면 안 됨")
+    void app_components_should_not_depend_on_infrastructure_components() {
+        ArchRule rule = noClasses()
+                .that().resideInAPackage("com.loopers.application..")
+                .and().haveSimpleNameEndingWith("App")
+                .should().dependOnClassesThat()
+                    .resideInAnyPackage("com.loopers.infrastructure..")
+                    .andShould().haveSimpleNameEndingWith("RepositoryImpl")
+                .because("App은 Domain Service를 통해서만 데이터에 접근해야 합니다");
+
+        rule.check(classes);
+    }
+
+    @Test
+    @DisplayName("Application 컴포넌트(Facade)는 Infrastructure 컴포넌트를 직접 의존하면 안 됨")
+    void facade_components_should_not_depend_on_infrastructure_components() {
         // Facade가 Repository 구현체를 직접 호출하는 것 금지
         ArchRule rule = noClasses()
                 .that().resideInAPackage("com.loopers.application..")
@@ -137,7 +152,7 @@ class LayeredArchitectureTest {
                 .should().dependOnClassesThat()
                     .resideInAnyPackage("com.loopers.infrastructure..")
                     .andShould().haveSimpleNameEndingWith("RepositoryImpl")
-                .because("Facade는 Domain Service를 통해서만 데이터에 접근해야 합니다");
+                .because("Facade는 App을 통해서만 데이터에 접근해야 합니다");
 
         rule.check(classes);
     }
