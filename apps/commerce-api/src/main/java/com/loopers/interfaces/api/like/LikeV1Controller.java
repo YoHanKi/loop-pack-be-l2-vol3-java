@@ -1,6 +1,6 @@
 package com.loopers.interfaces.api.like;
 
-import com.loopers.application.like.LikeFacade;
+import com.loopers.application.like.LikeApp;
 import com.loopers.application.like.LikeInfo;
 import com.loopers.interfaces.api.ApiResponse;
 import jakarta.validation.Valid;
@@ -15,7 +15,7 @@ import static com.loopers.interfaces.api.like.LikeV1Dto.*;
 @RequiredArgsConstructor
 public class LikeV1Controller {
 
-    private final LikeFacade likeFacade;
+    private final LikeApp likeApp;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -23,7 +23,7 @@ public class LikeV1Controller {
             @PathVariable String productId,
             @Valid @RequestBody AddLikeRequest request
     ) {
-        LikeInfo info = likeFacade.addLike(request.memberId(), productId);
+        LikeInfo info = likeApp.addLike(request.memberId(), productId);
         return ApiResponse.success(LikeResponse.from(info));
     }
 
@@ -33,7 +33,7 @@ public class LikeV1Controller {
             @PathVariable String productId,
             @Valid @RequestBody RemoveLikeRequest request
     ) {
-        likeFacade.removeLike(request.memberId(), productId);
+        likeApp.removeLike(request.memberId(), productId);
         return ApiResponse.success(null);
     }
 }
