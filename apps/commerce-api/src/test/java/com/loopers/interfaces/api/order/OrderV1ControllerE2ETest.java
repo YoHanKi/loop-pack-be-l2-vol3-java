@@ -1,9 +1,9 @@
 package com.loopers.interfaces.api.order;
 
+import com.loopers.application.order.OrderApp;
+import com.loopers.application.order.OrderInfo;
+import com.loopers.application.order.OrderItemCommand;
 import com.loopers.domain.brand.BrandService;
-import com.loopers.domain.order.OrderModel;
-import com.loopers.domain.order.OrderService;
-import com.loopers.domain.order.OrderItemRequest;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.utils.DatabaseCleanUp;
@@ -39,7 +39,7 @@ class OrderV1ControllerE2ETest {
     private BrandService brandService;
 
     @Autowired
-    private OrderService orderService;
+    private OrderApp orderApp;
 
     @Autowired
     private ProductRepository productRepository;
@@ -69,14 +69,14 @@ class OrderV1ControllerE2ETest {
         void getOrder_success_returns200() {
             // given
             Long memberId = 1L;
-            OrderModel order = orderService.createOrder(memberId, List.of(new OrderItemRequest("prod1", 2)));
+            OrderInfo order = orderApp.createOrder(memberId, List.of(new OrderItemCommand("prod1", 2)));
 
             ParameterizedTypeReference<ApiResponse<OrderV1Dto.OrderResponse>> responseType =
                     new ParameterizedTypeReference<>() {};
 
             // when
             ResponseEntity<ApiResponse<OrderV1Dto.OrderResponse>> response = restTemplate.exchange(
-                    ORDERS_URL + "/" + order.getOrderId().value() + "?memberId=" + memberId,
+                    ORDERS_URL + "/" + order.orderId() + "?memberId=" + memberId,
                     HttpMethod.GET,
                     null,
                     responseType
@@ -86,7 +86,7 @@ class OrderV1ControllerE2ETest {
             assertAll(
                     () -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK),
                     () -> assertThat(response.getBody().data()).isNotNull(),
-                    () -> assertThat(response.getBody().data().orderId()).isEqualTo(order.getOrderId().value()),
+                    () -> assertThat(response.getBody().data().orderId()).isEqualTo(order.orderId()),
                     () -> assertThat(response.getBody().data().refMemberId()).isEqualTo(memberId),
                     () -> assertThat(response.getBody().data().items()).hasSize(1)
             );
@@ -113,11 +113,11 @@ class OrderV1ControllerE2ETest {
             // given
             Long ownerId = 1L;
             Long otherMemberId = 2L;
-            OrderModel order = orderService.createOrder(ownerId, List.of(new OrderItemRequest("prod1", 1)));
+            OrderInfo order = orderApp.createOrder(ownerId, List.of(new OrderItemCommand("prod1", 1)));
 
             // when
             ResponseEntity<ApiResponse> response = restTemplate.exchange(
-                    ORDERS_URL + "/" + order.getOrderId().value() + "?memberId=" + otherMemberId,
+                    ORDERS_URL + "/" + order.orderId() + "?memberId=" + otherMemberId,
                     HttpMethod.GET,
                     null,
                     ApiResponse.class
@@ -137,8 +137,8 @@ class OrderV1ControllerE2ETest {
         void getOrders_success_returns200() {
             // given
             Long memberId = 1L;
-            orderService.createOrder(memberId, List.of(new OrderItemRequest("prod1", 1)));
-            orderService.createOrder(memberId, List.of(new OrderItemRequest("prod1", 1)));
+            orderApp.createOrder(memberId, List.of(new OrderItemCommand("prod1", 1)));
+            orderApp.createOrder(memberId, List.of(new OrderItemCommand("prod1", 1)));
 
             ParameterizedTypeReference<ApiResponse<OrderV1Dto.OrderListResponse>> responseType =
                     new ParameterizedTypeReference<>() {};
@@ -187,8 +187,8 @@ class OrderV1ControllerE2ETest {
             // given
             Long memberId1 = 1L;
             Long memberId2 = 2L;
-            orderService.createOrder(memberId1, List.of(new OrderItemRequest("prod1", 1)));
-            orderService.createOrder(memberId2, List.of(new OrderItemRequest("prod1", 1)));
+            orderApp.createOrder(memberId1, List.of(new OrderItemCommand("prod1", 1)));
+            orderApp.createOrder(memberId2, List.of(new OrderItemCommand("prod1", 1)));
 
             ParameterizedTypeReference<ApiResponse<OrderV1Dto.OrderListResponse>> responseType =
                     new ParameterizedTypeReference<>() {};

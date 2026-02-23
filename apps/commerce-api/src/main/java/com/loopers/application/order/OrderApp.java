@@ -1,7 +1,9 @@
 package com.loopers.application.order;
 
+import com.loopers.domain.common.vo.RefMemberId;
 import com.loopers.domain.order.OrderItemRequest;
 import com.loopers.domain.order.OrderModel;
+import com.loopers.domain.order.OrderRepository;
 import com.loopers.domain.order.OrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -17,6 +19,7 @@ import java.util.List;
 public class OrderApp {
 
     private final OrderService orderService;
+    private final OrderRepository orderRepository;
 
     @Transactional
     public OrderInfo createOrder(Long memberId, List<OrderItemCommand> items) {
@@ -40,7 +43,7 @@ public class OrderApp {
 
     @Transactional(readOnly = true)
     public Page<OrderInfo> getMyOrders(Long memberId, LocalDateTime startDateTime, LocalDateTime endDateTime, Pageable pageable) {
-        return orderService.getMyOrders(memberId, startDateTime, endDateTime, pageable)
+        return orderRepository.findByRefMemberId(new RefMemberId(memberId), startDateTime, endDateTime, pageable)
                 .map(OrderInfo::from);
     }
 }

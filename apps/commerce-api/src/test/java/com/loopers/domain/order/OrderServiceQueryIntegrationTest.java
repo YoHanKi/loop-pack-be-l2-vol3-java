@@ -1,6 +1,7 @@
 package com.loopers.domain.order;
 
 import com.loopers.domain.brand.BrandService;
+import com.loopers.domain.common.vo.RefMemberId;
 import com.loopers.domain.order.OrderItemRequest;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -23,11 +25,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
 @SpringBootTest
+@Transactional
 @DisplayName("OrderService 주문 조회 통합 테스트")
 class OrderServiceQueryIntegrationTest {
 
     @Autowired
     private OrderService orderService;
+
+    @Autowired
+    private OrderRepository orderRepository;
 
     @Autowired
     private BrandService brandService;
@@ -110,7 +116,7 @@ class OrderServiceQueryIntegrationTest {
             orderService.createOrder(memberId, List.of(new OrderItemRequest("prod1", 1)));
 
             // when
-            Page<OrderModel> orders = orderService.getMyOrders(memberId, null, null, PageRequest.of(0, 10));
+            Page<OrderModel> orders = orderRepository.findByRefMemberId(new RefMemberId(memberId), null, null, PageRequest.of(0, 10));
 
             // then
             assertAll(
@@ -129,7 +135,7 @@ class OrderServiceQueryIntegrationTest {
             orderService.createOrder(memberId2, List.of(new OrderItemRequest("prod1", 1)));
 
             // when
-            Page<OrderModel> orders = orderService.getMyOrders(memberId1, null, null, PageRequest.of(0, 10));
+            Page<OrderModel> orders = orderRepository.findByRefMemberId(new RefMemberId(memberId1), null, null, PageRequest.of(0, 10));
 
             // then
             assertThat(orders.getTotalElements()).isEqualTo(1);
@@ -139,7 +145,7 @@ class OrderServiceQueryIntegrationTest {
         @DisplayName("주문이 없는 회원은 빈 목록 반환")
         void getMyOrders_noOrders_returnsEmpty() {
             // when
-            Page<OrderModel> orders = orderService.getMyOrders(99L, null, null, PageRequest.of(0, 10));
+            Page<OrderModel> orders = orderRepository.findByRefMemberId(new RefMemberId(99L), null, null, PageRequest.of(0, 10));
 
             // then
             assertThat(orders.getContent()).isEmpty();

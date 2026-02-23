@@ -21,16 +21,6 @@ public class BrandService {
         return brandRepository.save(brand);
     }
 
-    public BrandModel getBrand(String brandId) {
-        return brandRepository.findByBrandId(new BrandId(brandId))
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."));
-    }
-
-    public BrandModel getBrandByRefId(Long id) {
-        return brandRepository.findById(id)
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."));
-    }
-
     public BrandModel deleteBrand(String brandId) {
         BrandModel brand = brandRepository.findByBrandId(new BrandId(brandId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."));

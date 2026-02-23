@@ -9,8 +9,6 @@ import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -40,10 +38,6 @@ public class LikeService {
                                 .orElseThrow(() -> new CoreException(ErrorType.CONFLICT, "좋아요 추가 중 오류가 발생했습니다."));
                     }
                 });
-    }
-
-    public Page<LikeModel> getMyLikes(Long memberId, Pageable pageable) {
-        return likeRepository.findByRefMemberId(new RefMemberId(memberId), pageable);
     }
 
     public void removeLike(Long memberId, String productId) {

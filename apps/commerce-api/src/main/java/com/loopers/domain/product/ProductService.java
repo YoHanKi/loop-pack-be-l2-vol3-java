@@ -39,11 +39,6 @@ public class ProductService {
         return productRepository.save(product);
     }
 
-    public ProductModel getProduct(String productId) {
-        return productRepository.findByProductId(new ProductId(productId))
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
-    }
-
     public ProductModel updateProduct(String productId, String productName, BigDecimal price, int stockQuantity) {
         ProductModel product = productRepository.findByProductId(new ProductId(productId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
@@ -61,11 +56,6 @@ public class ProductService {
         productRepository.save(product);
     }
 
-    public ProductModel getProductByRefId(Long id) {
-        return productRepository.findById(id)
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 상품이 존재하지 않습니다."));
-    }
-
     public Page<ProductModel> getProducts(String brandId, String sortBy, Pageable pageable) {
         // brandId가 제공되면 Brand PK로 변환
         Long refBrandId = null;
@@ -75,10 +65,6 @@ public class ProductService {
             refBrandId = brand.getId();
         }
         return productRepository.findProducts(refBrandId, sortBy, pageable);
-    }
-
-    public long countLikes(Long productId) {
-        return productRepository.countLikes(productId);
     }
 
     public void deleteProductsByBrandRefId(Long brandDbId) {

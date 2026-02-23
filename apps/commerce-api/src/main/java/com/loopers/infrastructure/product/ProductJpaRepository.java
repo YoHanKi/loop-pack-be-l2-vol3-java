@@ -39,14 +39,14 @@ public interface ProductJpaRepository extends JpaRepository<ProductModel, Long> 
     )
     Page<ProductModel> findActiveSortByLikesDesc(@Param("refBrandId") Long refBrandId, Pageable pageable);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query(
             value = "UPDATE products SET stock_quantity = stock_quantity - :quantity WHERE id = :productId AND stock_quantity >= :quantity",
             nativeQuery = true
     )
     int decreaseStockIfAvailable(@Param("productId") Long productId, @Param("quantity") int quantity);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query(
             value = "UPDATE products SET stock_quantity = stock_quantity + :quantity WHERE id = :productId",
             nativeQuery = true

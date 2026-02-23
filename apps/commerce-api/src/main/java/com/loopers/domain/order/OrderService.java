@@ -1,6 +1,5 @@
 package com.loopers.domain.order;
 
-import com.loopers.domain.common.vo.RefMemberId;
 import com.loopers.domain.order.vo.OrderId;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
@@ -8,11 +7,8 @@ import com.loopers.domain.product.vo.ProductId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -84,10 +80,6 @@ public class OrderService {
         }
 
         return orderRepository.save(order);
-    }
-
-    public Page<OrderModel> getMyOrders(Long memberId, LocalDateTime startDateTime, LocalDateTime endDateTime, Pageable pageable) {
-        return orderRepository.findByRefMemberId(new RefMemberId(memberId), startDateTime, endDateTime, pageable);
     }
 
     public OrderModel getMyOrder(Long memberId, String orderId) {

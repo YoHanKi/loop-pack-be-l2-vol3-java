@@ -2,8 +2,11 @@ package com.loopers.domain.like;
 
 import com.loopers.domain.brand.BrandModel;
 import com.loopers.domain.brand.BrandService;
+import com.loopers.domain.common.vo.RefMemberId;
 import com.loopers.domain.product.ProductModel;
+import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.ProductService;
+import com.loopers.domain.product.vo.ProductId;
 import com.loopers.support.error.CoreException;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
@@ -29,7 +32,13 @@ class LikeServiceIntegrationTest {
     private LikeService likeService;
 
     @Autowired
+    private LikeRepository likeRepository;
+
+    @Autowired
     private ProductService productService;
+
+    @Autowired
+    private ProductRepository productRepository;
 
     @Autowired
     private BrandService brandService;
@@ -154,7 +163,7 @@ class LikeServiceIntegrationTest {
             likeService.addLike(memberId, "prod2");
 
             // when
-            Page<LikeModel> likes = likeService.getMyLikes(memberId, PageRequest.of(0, 10));
+            Page<LikeModel> likes = likeRepository.findByRefMemberId(new RefMemberId(memberId), PageRequest.of(0, 10));
 
             // then
             assertAll(
@@ -179,19 +188,19 @@ class LikeServiceIntegrationTest {
             productService.deleteProduct("prod2");
 
             // when
-            Page<LikeModel> likes = likeService.getMyLikes(memberId, PageRequest.of(0, 10));
+            Page<LikeModel> likes = likeRepository.findByRefMemberId(new RefMemberId(memberId), PageRequest.of(0, 10));
 
             // then
             assertThat(likes.getTotalElements()).isEqualTo(1);
             assertThat(likes.getContent().get(0).getRefProductId().value())
-                    .isEqualTo(productService.getProduct("prod1").getId());
+                    .isEqualTo(productRepository.findByProductId(new ProductId("prod1")).orElseThrow().getId());
         }
 
         @Test
         @DisplayName("좋아요가 없으면 빈 목록 반환")
         void getMyLikes_noLikes_returnsEmpty() {
             // when
-            Page<LikeModel> likes = likeService.getMyLikes(99L, PageRequest.of(0, 10));
+            Page<LikeModel> likes = likeRepository.findByRefMemberId(new RefMemberId(99L), PageRequest.of(0, 10));
 
             // then
             assertThat(likes.getContent()).isEmpty();
@@ -209,7 +218,7 @@ class LikeServiceIntegrationTest {
             likeService.addLike(2L, "prod1");
 
             // when
-            Page<LikeModel> likes = likeService.getMyLikes(1L, PageRequest.of(0, 10));
+            Page<LikeModel> likes = likeRepository.findByRefMemberId(new RefMemberId(1L), PageRequest.of(0, 10));
 
             // then
             assertThat(likes.getTotalElements()).isEqualTo(1);

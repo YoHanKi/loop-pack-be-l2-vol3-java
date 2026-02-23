@@ -1,6 +1,5 @@
 package com.loopers.domain.order;
 
-import com.loopers.domain.common.vo.RefMemberId;
 import com.loopers.domain.order.vo.OrderId;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
@@ -13,12 +12,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -193,24 +188,6 @@ class OrderServiceTest {
         assertThatThrownBy(() -> orderService.getMyOrder(memberId, orderId))
                 .isInstanceOf(CoreException.class)
                 .hasFieldOrPropertyWithValue("errorType", ErrorType.FORBIDDEN);
-    }
-
-    @Test
-    @DisplayName("getMyOrders: 회원의 주문 목록 조회 성공")
-    void getMyOrders_success() {
-        // given
-        Long memberId = 1L;
-        OrderModel order = mock(OrderModel.class);
-        Page<OrderModel> page = new PageImpl<>(List.of(order));
-        when(orderRepository.findByRefMemberId(
-                any(RefMemberId.class), any(), any(), any()
-        )).thenReturn(page);
-
-        // when
-        Page<OrderModel> result = orderService.getMyOrders(memberId, null, null, PageRequest.of(0, 10));
-
-        // then
-        assertThat(result.getContent()).hasSize(1);
     }
 
     private ProductModel mockProduct(String productId, String productName, BigDecimal price, Long id) {
