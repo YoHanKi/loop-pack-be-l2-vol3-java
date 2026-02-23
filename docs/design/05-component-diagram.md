@@ -39,13 +39,14 @@ package "Presentation Layer\n(interfaces)" {
 }
 
 package "Application Layer\n(application)" {
-  [EnrollmentFacade] as Facade
+  [EnrollmentApp] as App
   [EnrollmentResult] as ResultVO
-  note right of Facade
-    역할 (Thin Facade):
+  note right of App
+    역할 (App):
     - @Transactional 관리
     - Domain → Result VO 변환
     - Domain Service 조율만
+    (단일 도메인 유스케이스)
   end note
 }
 
@@ -81,13 +82,13 @@ package "Infrastructure Layer\n(infrastructure)" {
 }
 
 ' --- Requests flow (올바른 의존성 방향) ---
-Controller --> Facade : 호출
+Controller --> App : 호출
 Controller --> Request : 사용
 Controller ..> Response : 생성 (from Result)
 
-' --- Facade to Domain Service ---
-Facade --> DomainService : 호출
-Facade ..> ResultVO : 생성 (from Entity)
+' --- App to Domain Service ---
+App --> DomainService : 호출
+App ..> ResultVO : 생성 (from Entity)
 
 ' --- Domain Service to Repository ---
 DomainService --> EnrollmentRepo : 의존
@@ -115,7 +116,7 @@ EnrollmentRepoImpl --> EnrollmentJpa : 위임
 ## Member 도메인 컴포넌트 다이어그램
 
 ### 검증 목적
-Member 도메인의 레이어드 아키텍처 구조를 확인한다. Controller → Facade → Service → Repository 의존성 흐름이 명확히 드러나야 하며, Facade가 Service만 호출하고 Reader를 직접 호출하지 않는지 검증한다.
+Member 도메인의 레이어드 아키텍처 구조를 확인한다. Controller → App → Service → Repository 의존성 흐름이 명확히 드러나야 하며, App이 Service만 호출하고 Reader를 직접 호출하지 않는지 검증한다.
 
 ### 다이어그램
 
@@ -148,9 +149,9 @@ package "Presentation Layer\n(interfaces.api.member)" #E3F2FD {
 }
 
 package "Application Layer\n(application.member)" #FFF3E0 {
-    [MemberFacade] as Facade
-    note right of Facade
-        **역할 (Thin Facade):**
+    [MemberApp] as App
+    note right of App
+        **역할 (App — 단일 도메인):**
         - Service 조합
         - Model → Info 변환
         - 유스케이스 경계
@@ -158,6 +159,7 @@ package "Application Layer\n(application.member)" #FFF3E0 {
         **패턴:**
         - Service만 호출 (Reader 직접 호출 금지)
         - Info 반환 (Model 노출 금지)
+        - 크로스 도메인은 Facade에 위임
     end note
 
     [MemberInfo] as Info
@@ -229,14 +231,14 @@ package "Infrastructure Layer\n(infrastructure.member)" #F3E5F5 {
 }
 
 ' === 의존성 흐름 (레이어 간) ===
-Controller --> Facade : 호출
+Controller --> App : 호출
 Controller ..> RegReq : 사용
 Controller ..> MemResp : 반환
 Controller ..> MeResp : 반환
 Controller ..> ChgPwdReq : 사용
 
-Facade --> Service : 조율
-Facade ..> Info : 반환
+App --> Service : 조율
+App ..> Info : 반환
 
 Service --> Reader : 조회
 Service --> Repo : 영속화
@@ -255,38 +257,51 @@ RepoImpl ..> Model : 로드/저장
 ### 해석
 
 **레이어 흐름**:
-- **Controller**: HTTP 요청 수신 → Facade 호출 → Info 수신 → DTO 변환하여 응답
-- **Facade**: Service 호출 → Model 수신 → Info 변환하여 반환
+- **Controller**: HTTP 요청 수신 → App 호출 → Info 수신 → DTO 변환하여 응답
+- **App**: Service 호출 → Model 수신 → Info 변환하여 반환 (단일 도메인 유스케이스)
 - **Service**: 비즈니스 로직 실행 → Reader/Repository 사용 → Model 반환
 - **Reader**: Repository 사용 → 조회 전용 → Model 반환
 - **Repository**: 영속화 추상화 (Port)
 - **RepositoryImpl**: Repository 구현 (Adapter) → JpaRepository 위임
 
 **핵심 패턴**:
-1. **Facade는 Service만 호출**: Reader를 직접 호출하지 않음 (Service가 Reader 소유)
-2. **Info 변환**: Facade에서 Model → Info 변환 (레이어 격리)
+1. **App은 Service만 호출**: Reader를 직접 호출하지 않음 (Service가 Reader 소유)
+2. **Info 변환**: App에서 Model → Info 변환 (레이어 격리)
 3. **Port-Adapter**: Domain의 Repository(interface)를 Infrastructure의 RepositoryImpl이 구현
 4. **DTO vs Info**: DTO는 HTTP 계층, Info는 Application 계층 (서로 다른 관심사)
+5. **App vs Facade**: 단일 도메인은 App, 2개 이상 App 조합 시에만 Facade
 
 ---
 
 ## 설계 원칙
 
-### 1. Facade Pattern (Application Layer)
+### 1. App / Facade Pattern (Application Layer)
 
-**Thin Facade 원칙**:
-- Facade는 Service만 호출, Reader 직접 호출 금지
-- 여러 도메인 서비스 조합은 Facade 책임
-- 비즈니스 로직은 Service에 위임 (Facade는 조율만)
+**App 원칙 (기본 패턴)**:
+- App은 단일 도메인 유스케이스를 담당
+- Service만 호출, Reader 직접 호출 금지
+- Model → Info 변환 담당
+- Controller는 단일 도메인 처리 시 App을 직접 호출
+
+**Facade 원칙 (크로스 도메인)**:
+- Facade는 **2개 이상의 App**을 조합할 때만 사용
+- App → App 의존은 금지이므로 크로스 도메인은 Facade 책임
+- Facade는 Service를 직접 호출하지 않고 App 경유
 
 **Info 변환**:
-- Facade가 Model → Info 변환 담당 (레이어 격리)
+- App이 Model → Info 변환 담당 (레이어 격리)
 - Controller는 Info를 알지만 Model은 모름
 - Domain Model이 Presentation Layer에 노출되지 않음
 
 **트랜잭션 경계**:
-- Facade 메서드가 @Transactional 경계
+- App 메서드 또는 Facade 메서드가 @Transactional 경계
 - 유스케이스 단위로 트랜잭션 관리
+
+**변환 흐름**:
+```
+단일 도메인: Controller → App → Service → Repository
+크로스 도메인: Controller → Facade → App(복수) → Service → Repository
+```
 
 ---
 
@@ -356,7 +371,8 @@ Domain (Repository interface) <--- Infrastructure (RepositoryImpl)
 |--------|--------|----------|------|
 | **Presentation** | interfaces.api.member | MemberV1Controller | HTTP 엔드포인트, 인증 헤더 추출, DTO ↔ Info 변환 |
 | | | DTOs (record) | 요청/응답 데이터, Jakarta Validation |
-| **Application** | application.member | MemberFacade | 유스케이스 조합, Service 호출, Model → Info 변환 |
+| **Application** | application.member | MemberApp | 단일 도메인 유스케이스, Service 호출, Model → Info 변환 |
+| | | (크로스 도메인 시) XxxFacade | 2개 이상 App 조합, 크로스 도메인 오케스트레이션 |
 | | | MemberInfo (record) | 애플리케이션 결과 VO, 불변 |
 | **Domain** | domain.member | MemberService | 비즈니스 로직, 트랜잭션 경계, 교차 엔티티 규칙 |
 | | | MemberReader | 읽기 전용 조회, getOrThrow 패턴 |
@@ -389,7 +405,10 @@ Domain (Repository interface) <--- Infrastructure (RepositoryImpl)
 ## 검증 체크리스트
 
 - [x] 레이어 간 의존성 방향: Interfaces → Application → Domain ← Infrastructure
-- [x] Facade는 Service만 호출 (Reader 직접 호출 금지)
+- [x] 단일 도메인 유스케이스는 App 사용 (Facade 금지)
+- [x] Facade는 2개 이상의 App을 조합할 때만 사용
+- [x] App은 Service만 호출 (Reader 직접 호출 금지)
+- [x] Facade는 App만 호출 (Service 직접 호출 금지)
 - [x] Info는 Application 레이어 (Model은 Domain 레이어)
 - [x] Repository는 Domain에 정의 (Port), Infrastructure에 구현 (Adapter)
 - [x] Controller는 Model을 모름 (Info만 알음)
@@ -400,6 +419,7 @@ Domain (Repository interface) <--- Infrastructure (RepositoryImpl)
 ## 다음 단계
 
 이 컴포넌트 다이어그램을 기반으로:
-- **구현**: MemberFacade, MemberInfo 구현 (현재 Facade는 비어있음)
-- **테스트**: Facade 단위 테스트 (Service 모킹)
+- **구현**: MemberApp, MemberInfo 구현
+- **테스트**: App 단위 테스트 (Service 모킹)
 - **확장**: 다른 도메인에도 동일한 패턴 적용 (Product, Order 등)
+- **크로스 도메인**: 2개 이상 App 조합이 필요한 경우에만 Facade 추가

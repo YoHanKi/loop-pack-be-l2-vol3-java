@@ -23,10 +23,16 @@ allowed-tools: Read, Grep
 | Controller | `{Domain}V{version}Controller` | `MemberV1Controller` | `interfaces.api.{domain}` |
 | API Spec | `{Domain}V{version}ApiSpec` | `MemberV1ApiSpec` | `interfaces.api.{domain}` |
 | DTO | `{Domain}V{version}Dto` | `MemberV1Dto` | `interfaces.api.{domain}` |
-| Facade | `{Domain}Facade` | `MemberFacade` | `application.{domain}` |
+| **App** | `{Domain}App` | `MemberApp`, `OrderApp` | `application.{domain}` |
+| **Facade** | `{Domain}Facade` | `OrderFacade` | `application.{domain}` |
 | Info | `{Domain}Info` | `MemberInfo` | `application.{domain}` |
 | Exception | `{Concept}Exception` | `CoreException` | `support.error` |
 | Converter | `{ValueObject}Converter` | `MemberIdConverter` | `infrastructure.jpa.converter` |
+
+> **App vs Facade 선택 기준**:
+> - 단일 도메인 유스케이스 → **`{Domain}App`** 사용
+> - 2개 이상의 App을 조합하는 크로스 도메인 → **`{Domain}Facade`** 사용
+> - Facade는 반드시 2개 이상의 App을 호출할 때만 생성 (단일 App만 쓰는 Facade 금지)
 
 ### 메서드 네이밍
 
@@ -420,11 +426,24 @@ public record Email(String address) {
 9. **중첩 클래스/레코드 정의 금지**: 클래스나 record 내부에 다른 record/class 정의 금지 → 별도 파일로 분리
    ```java
    // ❌ 금지
-   public class OrderFacade {
+   public class OrderApp {
        public record OrderCommand(String productId, int qty) {}
    }
    // ✅ 허용: OrderCommand.java 별도 파일로 생성
    ```
+10. **단일 도메인에 Facade 생성 금지**: 단일 도메인은 App으로 처리
+    ```java
+    // ❌ 금지: MemberFacade가 MemberApp 하나만 사용하는 경우
+    public class MemberFacade {
+        private final MemberApp memberApp;  // 단일 App만 사용 → Facade 불필요
+    }
+    // ✅ 허용: App 직접 사용
+    public class MemberV1Controller {
+        private final MemberApp memberApp;
+    }
+    ```
+11. **App/Facade에서 Repository 직접 의존 금지**: 반드시 Service 경유
+12. **Facade에서 Service 직접 호출 금지**: 반드시 App 경유
 
 ### ✅ Best Practices
 1. **불변 객체 선호**: `record`, `final` 활용
