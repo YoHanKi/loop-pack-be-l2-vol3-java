@@ -1,6 +1,6 @@
 package com.loopers.interfaces.api.order;
 
-import com.loopers.application.order.OrderFacade;
+import com.loopers.application.order.OrderApp;
 import com.loopers.application.order.OrderInfo;
 import com.loopers.application.order.OrderItemCommand;
 import com.loopers.interfaces.api.ApiResponse;
@@ -22,7 +22,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OrderV1Controller implements OrderV1ApiSpec {
 
-    private final OrderFacade orderFacade;
+    private final OrderApp orderApp;
 
     @PostMapping
     @Override
@@ -33,7 +33,7 @@ public class OrderV1Controller implements OrderV1ApiSpec {
                 .map(OrderV1Dto.OrderItemRequest::toCommand)
                 .toList();
 
-        OrderInfo info = orderFacade.createOrder(request.memberId(), items);
+        OrderInfo info = orderApp.createOrder(request.memberId(), items);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(OrderV1Dto.OrderResponse.from(info)));
     }
@@ -46,7 +46,7 @@ public class OrderV1Controller implements OrderV1ApiSpec {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             Pageable pageable
     ) {
-        Page<OrderInfo> orders = orderFacade.getMyOrders(
+        Page<OrderInfo> orders = orderApp.getMyOrders(
                 memberId,
                 startDate != null ? startDate.atStartOfDay() : null,
                 endDate != null ? endDate.plusDays(1).atStartOfDay() : null,
@@ -61,7 +61,7 @@ public class OrderV1Controller implements OrderV1ApiSpec {
             @PathVariable String orderId,
             @RequestParam Long memberId
     ) {
-        OrderInfo info = orderFacade.getMyOrder(memberId, orderId);
+        OrderInfo info = orderApp.getMyOrder(memberId, orderId);
         return ResponseEntity.ok(ApiResponse.success(OrderV1Dto.OrderResponse.from(info)));
     }
 
@@ -71,7 +71,7 @@ public class OrderV1Controller implements OrderV1ApiSpec {
             @PathVariable String orderId,
             @Valid @RequestBody OrderV1Dto.CancelOrderRequest request
     ) {
-        OrderInfo info = orderFacade.cancelOrder(request.memberId(), orderId);
+        OrderInfo info = orderApp.cancelOrder(request.memberId(), orderId);
         return ResponseEntity.ok(ApiResponse.success(OrderV1Dto.OrderResponse.from(info)));
     }
 }

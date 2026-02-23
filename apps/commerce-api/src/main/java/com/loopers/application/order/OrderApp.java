@@ -14,7 +14,7 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
-public class OrderFacade {
+public class OrderApp {
 
     private final OrderService orderService;
 
