@@ -6,7 +6,6 @@ import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -15,7 +14,6 @@ public class MemberService {
     private final MemberRepository memberRepository;
     private final PasswordHasher passwordHasher;
 
-    @Transactional
     public MemberModel register(String memberId, String rawPassword, String email, String birthDate, String name, Gender gender) {
         if (memberRepository.existsByMemberId(new MemberId(memberId))) {
             throw new CoreException(ErrorType.CONFLICT, "이미 가입된 ID 입니다.");
@@ -25,7 +23,6 @@ public class MemberService {
         return memberRepository.save(member);
     }
 
-    @Transactional(readOnly = true)
     public MemberModel authenticate(String loginId, String loginPw) {
         MemberModel member = memberRepository.findByMemberId(new MemberId(loginId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 회원이 존재하지 않습니다."));
@@ -35,7 +32,6 @@ public class MemberService {
         return member;
     }
 
-    @Transactional
     public void changePassword(String loginId, String loginPw,
                                String currentPassword, String newPassword) {
         MemberModel member = memberRepository.findByMemberId(new MemberId(loginId))

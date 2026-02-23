@@ -11,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -26,7 +25,6 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
 
-    @Transactional
     public OrderModel createOrder(Long memberId, List<OrderItemRequest> itemRequests) {
         // 1. 중복 상품 수량 합산
         Map<String, Integer> aggregatedItems = aggregateQuantities(itemRequests);
@@ -65,7 +63,6 @@ public class OrderService {
         return orderRepository.save(order);
     }
 
-    @Transactional
     public OrderModel cancelOrder(Long memberId, String orderId) {
         OrderModel order = orderRepository.findByOrderId(new OrderId(orderId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 주문이 존재하지 않습니다."));
@@ -89,12 +86,10 @@ public class OrderService {
         return orderRepository.save(order);
     }
 
-    @Transactional(readOnly = true)
     public Page<OrderModel> getMyOrders(Long memberId, LocalDateTime startDateTime, LocalDateTime endDateTime, Pageable pageable) {
         return orderRepository.findByRefMemberId(new RefMemberId(memberId), startDateTime, endDateTime, pageable);
     }
 
-    @Transactional(readOnly = true)
     public OrderModel getMyOrder(Long memberId, String orderId) {
         OrderModel order = orderRepository.findByOrderId(new OrderId(orderId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "주문을 찾을 수 없습니다."));

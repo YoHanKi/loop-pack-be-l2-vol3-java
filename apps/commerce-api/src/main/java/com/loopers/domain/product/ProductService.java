@@ -10,7 +10,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -22,7 +21,6 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final BrandRepository brandRepository;
 
-    @Transactional
     public ProductModel createProduct(String productId, String brandId, String productName, BigDecimal price, int stockQuantity) {
         // 중복 체크
         if (productRepository.existsByProductId(new ProductId(productId))) {
@@ -41,13 +39,11 @@ public class ProductService {
         return productRepository.save(product);
     }
 
-    @Transactional(readOnly = true)
     public ProductModel getProduct(String productId) {
         return productRepository.findByProductId(new ProductId(productId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
     }
 
-    @Transactional
     public ProductModel updateProduct(String productId, String productName, BigDecimal price, int stockQuantity) {
         ProductModel product = productRepository.findByProductId(new ProductId(productId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
@@ -56,7 +52,6 @@ public class ProductService {
         return productRepository.save(product);
     }
 
-    @Transactional
     public void deleteProduct(String productId) {
         ProductModel product = productRepository.findByProductId(new ProductId(productId))
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
@@ -66,13 +61,11 @@ public class ProductService {
         productRepository.save(product);
     }
 
-    @Transactional(readOnly = true)
     public ProductModel getProductByRefId(Long id) {
         return productRepository.findById(id)
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 상품이 존재하지 않습니다."));
     }
 
-    @Transactional(readOnly = true)
     public Page<ProductModel> getProducts(String brandId, String sortBy, Pageable pageable) {
         // brandId가 제공되면 Brand PK로 변환
         Long refBrandId = null;
@@ -84,12 +77,10 @@ public class ProductService {
         return productRepository.findProducts(refBrandId, sortBy, pageable);
     }
 
-    @Transactional(readOnly = true)
     public long countLikes(Long productId) {
         return productRepository.countLikes(productId);
     }
 
-    @Transactional
     public void deleteProductsByBrandRefId(Long brandDbId) {
         List<ProductModel> products = productRepository.findByRefBrandId(brandDbId);
         for (ProductModel product : products) {
