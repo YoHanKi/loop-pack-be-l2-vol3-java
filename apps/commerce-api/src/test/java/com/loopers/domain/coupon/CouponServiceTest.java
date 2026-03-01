@@ -128,14 +128,15 @@ class CouponServiceTest {
         @DisplayName("FIXED 쿠폰 - 정상 할인")
         void calculateDiscount_fixed_success() {
             // given
+            Long memberId = 1L;
             BigDecimal originalAmount = BigDecimal.valueOf(50000);
             BigDecimal discountValue = BigDecimal.valueOf(5000);
-            CouponTemplateModel template = setupBaseMocksForDiscount(null);
+            CouponTemplateModel template = setupBaseMocksForDiscount(memberId, null);
             when(template.getType()).thenReturn(CouponType.FIXED);
             when(template.getValue()).thenReturn(discountValue);
 
             // when
-            BigDecimal discount = couponService.calculateDiscount("00000000-0000-0000-0000-000000000001", originalAmount);
+            BigDecimal discount = couponService.calculateDiscount("00000000-0000-0000-0000-000000000001", memberId, originalAmount);
 
             // then
             assertThat(discount).isEqualByComparingTo(BigDecimal.valueOf(5000));
@@ -145,14 +146,15 @@ class CouponServiceTest {
         @DisplayName("FIXED 쿠폰 - 주문금액 초과 시 주문금액까지 할인")
         void calculateDiscount_fixed_capped() {
             // given
+            Long memberId = 1L;
             BigDecimal originalAmount = BigDecimal.valueOf(3000);
             BigDecimal discountValue = BigDecimal.valueOf(5000);
-            CouponTemplateModel template = setupBaseMocksForDiscount(null);
+            CouponTemplateModel template = setupBaseMocksForDiscount(memberId, null);
             when(template.getType()).thenReturn(CouponType.FIXED);
             when(template.getValue()).thenReturn(discountValue);
 
             // when
-            BigDecimal discount = couponService.calculateDiscount("00000000-0000-0000-0000-000000000001", originalAmount);
+            BigDecimal discount = couponService.calculateDiscount("00000000-0000-0000-0000-000000000001", memberId, originalAmount);
 
             // then
             assertThat(discount).isEqualByComparingTo(BigDecimal.valueOf(3000));
@@ -162,38 +164,60 @@ class CouponServiceTest {
         @DisplayName("RATE 쿠폰 - 정상 할인 계산")
         void calculateDiscount_rate_success() {
             // given
+            Long memberId = 1L;
             BigDecimal originalAmount = BigDecimal.valueOf(10000);
             BigDecimal rateValue = BigDecimal.valueOf(10); // 10%
-            CouponTemplateModel template = setupBaseMocksForDiscount(null);
+            CouponTemplateModel template = setupBaseMocksForDiscount(memberId, null);
             when(template.getType()).thenReturn(CouponType.RATE);
             when(template.getValue()).thenReturn(rateValue);
 
             // when
-            BigDecimal discount = couponService.calculateDiscount("00000000-0000-0000-0000-000000000001", originalAmount);
+            BigDecimal discount = couponService.calculateDiscount("00000000-0000-0000-0000-000000000001", memberId, originalAmount);
 
             // then
             assertThat(discount).isEqualByComparingTo(BigDecimal.valueOf(1000));
         }
 
         @Test
-        @DisplayName("최소 주문금액 미충족 - 400 Bad Request")
-        void calculateDiscount_belowMinOrderAmount_throws400() {
-            // given
-            BigDecimal originalAmount = BigDecimal.valueOf(5000);
-            BigDecimal minOrderAmount = BigDecimal.valueOf(10000);
-            setupBaseMocksForDiscount(minOrderAmount);
+        @DisplayName("타 유저 쿠폰 사용 시도 - 403 Forbidden")
+        void calculateDiscount_otherMemberCoupon_throws403() {
+            // given - 소유권 검증에서 바로 던지므로 이후 stub 없이 최소 설정
+            Long ownerMemberId = 1L;
+            Long attackerMemberId = 2L;
+            String userCouponIdValue = "00000000-0000-0000-0000-000000000001";
+            UserCouponModel userCoupon = mock(UserCouponModel.class);
+            when(userCoupon.getRefMemberId()).thenReturn(ownerMemberId);
+            when(userCouponRepository.findByUserCouponId(new UserCouponId(userCouponIdValue)))
+                    .thenReturn(Optional.of(userCoupon));
 
             // when & then
             assertThatThrownBy(() -> couponService.calculateDiscount(
-                    "00000000-0000-0000-0000-000000000001", originalAmount))
+                    userCouponIdValue, attackerMemberId, BigDecimal.valueOf(10000)))
+                    .isInstanceOf(CoreException.class)
+                    .hasFieldOrPropertyWithValue("errorType", ErrorType.FORBIDDEN);
+        }
+
+        @Test
+        @DisplayName("최소 주문금액 미충족 - 400 Bad Request")
+        void calculateDiscount_belowMinOrderAmount_throws400() {
+            // given
+            Long memberId = 1L;
+            BigDecimal originalAmount = BigDecimal.valueOf(5000);
+            BigDecimal minOrderAmount = BigDecimal.valueOf(10000);
+            setupBaseMocksForDiscount(memberId, minOrderAmount);
+
+            // when & then
+            assertThatThrownBy(() -> couponService.calculateDiscount(
+                    "00000000-0000-0000-0000-000000000001", memberId, originalAmount))
                     .isInstanceOf(CoreException.class)
                     .hasFieldOrPropertyWithValue("errorType", ErrorType.BAD_REQUEST);
         }
 
         // 공통 mock 설정: userCoupon + template 기본 스텁, template 반환
-        private CouponTemplateModel setupBaseMocksForDiscount(BigDecimal minOrderAmount) {
+        private CouponTemplateModel setupBaseMocksForDiscount(Long memberId, BigDecimal minOrderAmount) {
             String userCouponIdValue = "00000000-0000-0000-0000-000000000001";
             UserCouponModel userCoupon = mock(UserCouponModel.class);
+            when(userCoupon.getRefMemberId()).thenReturn(memberId);
             when(userCoupon.isAvailable()).thenReturn(true);
             when(userCoupon.isExpired(any())).thenReturn(false);
             when(userCoupon.getRefCouponTemplateId()).thenReturn(1L);

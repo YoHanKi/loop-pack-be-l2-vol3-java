@@ -66,7 +66,7 @@ class OrderFacadeTest {
             Long userCouponPkId = 10L;
 
             when(orderApp.calculateOriginalAmount(items)).thenReturn(originalAmount);
-            when(couponApp.calculateDiscount(userCouponId, originalAmount)).thenReturn(discountAmount);
+            when(couponApp.calculateDiscount(userCouponId, memberId, originalAmount)).thenReturn(discountAmount);
             when(couponApp.useUserCoupon(userCouponId)).thenReturn(userCouponPkId);
             OrderInfo expectedInfo = createOrderInfo(discountAmount, userCouponPkId);
             when(orderApp.createOrder(memberId, items, discountAmount, userCouponPkId)).thenReturn(expectedInfo);
@@ -78,7 +78,7 @@ class OrderFacadeTest {
             assertThat(result).isEqualTo(expectedInfo);
             assertThat(result.discountAmount()).isEqualByComparingTo(discountAmount);
             assertThat(result.refUserCouponId()).isEqualTo(userCouponPkId);
-            verify(couponApp).calculateDiscount(userCouponId, originalAmount);
+            verify(couponApp).calculateDiscount(userCouponId, memberId, originalAmount);
             verify(couponApp).useUserCoupon(userCouponId);
         }
 
@@ -92,7 +92,7 @@ class OrderFacadeTest {
             BigDecimal originalAmount = BigDecimal.valueOf(20000);
 
             when(orderApp.calculateOriginalAmount(items)).thenReturn(originalAmount);
-            when(couponApp.calculateDiscount(userCouponId, originalAmount))
+            when(couponApp.calculateDiscount(userCouponId, memberId, originalAmount))
                     .thenThrow(new CoreException(ErrorType.BAD_REQUEST, "만료된 쿠폰입니다."));
 
             // when & then
