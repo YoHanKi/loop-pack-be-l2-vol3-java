@@ -8,7 +8,7 @@
 - 대고객 API: `/api/v1` prefix
 - 어드민 API: `/api-admin/v1` prefix
 - 인증: 헤더 기반 (Customer: `X-Loopers-LoginId`, `X-Loopers-LoginPw` / Admin: `X-Loopers-Ldap`)
-- 제외: 결제(Payment), 쿠폰(Coupon), 회원 도메인(이미 구현됨)
+- 제외: 결제(Payment)
 
 ---
 
@@ -27,6 +27,11 @@
 | 스냅샷 | Snapshot | 주문 시점의 상품 정보 복사본 | Copy, Archive |
 | 삭제 일시 | Deleted At | Soft Delete 타임스탬프 | Removed At |
 | 비관적 락 | Pessimistic Lock | 재고 차감 전 행(row) 잠금 (`SELECT ... FOR UPDATE`) | Exclusive Lock |
+| 쿠폰 템플릿 | Coupon Template | 쿠폰 발급의 기준이 되는 템플릿 (종류/금액/수량/만료일 정의) | Coupon Definition |
+| 쿠폰 | User Coupon | 특정 회원에게 발급된 쿠폰 인스턴스 | Member Coupon |
+| 발급 수량 | Issued Quantity | 해당 쿠폰 템플릿으로 발급된 쿠폰 수 | Issued Count |
+| 할인 금액 | Discount Amount | 쿠폰 적용으로 차감되는 금액 | Deduction Amount |
+| 최종 결제 금액 | Final Amount | 주문 원금에서 할인 금액을 차감한 금액 | Final Price |
 
 ### 상태(Enum)
 
@@ -34,6 +39,9 @@
 |--------|-----|------|-----------|
 | 대기 | PENDING | 주문 생성 완료, 결제 대기 | → CANCELED |
 | 취소 | CANCELED | 주문 취소 완료 | (종료 상태) |
+| 사용 가능 | AVAILABLE | 쿠폰 발급됨, 사용 가능 상태 | → USED |
+| 사용됨 | USED | 쿠폰이 주문에 적용되어 사용 완료 | → AVAILABLE (주문 취소 시) |
+| 만료됨 | EXPIRED | `expiredAt < now()` 동적 계산 — DB에 저장하지 않음 | (표시 전용) |
 
 ### API 경로 규칙
 
@@ -86,10 +94,15 @@
 - **F-C06**: 로그인한 사용자가 자신이 좋아요한 상품 목록을 조회한다 (타 유저 접근 불가)
 
 #### 주문
-- **F-C07**: 로그인한 사용자가 여러 상품을 포함한 주문을 생성한다 (재고 차감, 스냅샷 저장)
+- **F-C07**: 로그인한 사용자가 여러 상품을 포함한 주문을 생성한다 (재고 차감, 스냅샷 저장, 쿠폰 적용 선택)
 - **F-C08**: 로그인한 사용자가 자신의 주문 목록을 조회한다 (기간 필터, 페이징)
 - **F-C09**: 로그인한 사용자가 자신의 특정 주문 상세를 조회한다 (스냅샷 포함)
-- **F-C10**: 로그인한 사용자가 PENDING 상태의 주문을 취소한다 (재고 복구, 상태 전이)
+- **F-C10**: 로그인한 사용자가 PENDING 상태의 주문을 취소한다 (재고 복구, 상태 전이, 쿠폰 복원)
+
+#### 쿠폰
+- **F-C11**: 로그인한 사용자가 특정 쿠폰 템플릿으로 쿠폰을 발급받는다 (중복 발급 불가, 수량 제한)
+- **F-C12**: 로그인한 사용자가 자신이 보유한 쿠폰 목록을 조회한다 (만료 여부 동적 계산)
+- **F-C13**: 주문 생성 시 보유 쿠폰을 적용하여 할인 금액을 차감한다
 
 ### Admin API (어드민 권한 필수)
 
@@ -111,6 +124,14 @@
 - **F-A11**: 어드민이 전체 주문 목록을 조회한다 (페이징)
 - **F-A12**: 어드민이 특정 주문 상세를 조회한다
 
+#### 쿠폰 관리
+- **F-A13**: 어드민이 쿠폰 템플릿 목록을 조회한다 (페이징)
+- **F-A14**: 어드민이 쿠폰 템플릿 상세를 조회한다
+- **F-A15**: 어드민이 새 쿠폰 템플릿을 생성한다 (FIXED/RATE 타입, 수량/만료일/최소주문금액 설정)
+- **F-A16**: 어드민이 쿠폰 템플릿 정보를 수정한다
+- **F-A17**: 어드민이 쿠폰 템플릿을 삭제한다 (soft delete)
+- **F-A18**: 어드민이 특정 쿠폰의 발급 내역을 조회한다 (페이징)
+
 ---
 
 ## 유스케이스 상세
@@ -118,13 +139,17 @@
 ### UC-C07: 주문 생성 (POST /api/v1/orders)
 
 #### Main Flow
-1. **요청**: 사용자가 `items: [{productId, quantity}]` 배열로 주문 요청
+1. **요청**: 사용자가 `items: [{productId, quantity}]` 배열 + `userCouponId(nullable)`로 주문 요청
 2. **인증**: `X-Loopers-LoginId`, `X-Loopers-LoginPw` 헤더 검증 → `user_id` 추출
 3. **입력 검증**:
    - items 배열이 비어있지 않음
    - 각 quantity >= 1
    - 동일 productId가 여러 개 있으면 quantity 합산
-4. **재고 차감** (동시성 제어):
+4. **쿠폰 처리** (userCouponId 제공 시):
+   - 쿠폰 유효성 검증: AVAILABLE 상태, 미만료, minOrderAmount 충족
+   - 할인 금액 계산: FIXED → `min(value, originalAmount)`, RATE → `originalAmount × rate / 100`
+   - 쿠폰 상태 변경: 조건부 UPDATE (`WHERE status='AVAILABLE'`) → rowsAffected == 0이면 409 Conflict
+5. **재고 차감** (동시성 제어):
    - productId를 오름차순으로 정렬 (데드락 방지)
    - 각 상품에 대해 **비관적 락** 획득 후 재고 검증 및 차감:
      ```sql
@@ -136,27 +161,30 @@
      UPDATE products SET stock_quantity = stock_quantity - :quantity WHERE id = :productId;
      ```
    - 재고 부족 → 전체 롤백 후 409 Conflict
-5. **상품 존재 확인**: 재고 차감 전 productId로 조회
+6. **상품 존재 확인**: 재고 차감 전 productId로 조회
    - 존재하지 않으면 → 404 Not Found
-6. **주문 저장**:
-   - `orders` 테이블에 INSERT: `ref_member_id`, `order_id(UUID)`, `status=PENDING`
-7. **주문 항목 스냅샷 저장**:
+7. **주문 저장**:
+   - `orders` 테이블에 INSERT: `ref_member_id`, `order_id(UUID)`, `status=PENDING`, `discount_amount`, `ref_user_coupon_id`
+8. **주문 항목 스냅샷 저장**:
    - `order_items` 테이블에 각 항목 INSERT:
      - `order_id`, `product_id(스냅샷)`, `product_name(스냅샷)`, `price(스냅샷)`, `quantity`
-8. **응답**: 201 Created
-   - `orderId`, `status`, `items` 배열 (스냅샷 포함)
+9. **응답**: 201 Created
+   - `orderId`, `status`, `items` 배열, `originalAmount`, `discountAmount`, `finalAmount`
 
 #### Alternate Flow
 - **A1**: 동일 productId 중복
   - quantity를 합산하여 단일 항목으로 처리
   - 예: `[{productId:"P001", qty:2}, {productId:"P001", qty:3}]` → `{productId:"P001", qty:5}`
+- **A2**: userCouponId 미제공
+  - discountAmount = 0, finalAmount = originalAmount
 
 #### Exception Flow
 - **E1**: 인증 실패 → 401 Unauthorized
 - **E2**: items 배열 비어있음 또는 quantity < 1 → 400 Bad Request
 - **E3**: product 존재하지 않음 또는 deleted → 404 Not Found
 - **E4**: 재고 부족 → 409 Conflict, 전체 롤백
-- **E5**: 트랜잭션 중 DB 에러 → 500 Internal Server Error, 롤백
+- **E5**: 쿠폰 만료/이미 사용됨/minOrderAmount 미충족 → 409 Conflict
+- **E6**: 트랜잭션 중 DB 에러 → 500 Internal Server Error, 롤백
 
 ---
 
@@ -195,6 +223,79 @@
 - **E3**: 소유권 불일치 → 403 Forbidden
 - **E4**: status != PENDING (이미 취소되지 않은 다른 상태) → 409 Conflict
 - **E5**: 트랜잭션 중 DB 에러 → 500 Internal Server Error, 롤백
+
+---
+
+### UC-C11: 쿠폰 발급 (POST /api/v1/coupons/{couponId}/issue)
+
+#### Main Flow
+1. **요청**: 사용자가 `couponTemplateId`와 `memberId`로 쿠폰 발급 요청
+2. **쿠폰 템플릿 조회** (비관적 락):
+   - `SELECT ... FOR UPDATE`로 템플릿 행 잠금
+   - 존재하지 않으면 → 404 Not Found
+3. **유효성 검증**:
+   - `expiredAt >= now()` 확인 → 만료 시 409 Conflict
+   - `issuedQuantity < totalQuantity` 확인 → 수량 초과 시 409 Conflict
+   - 동일 회원이 이미 발급받은 쿠폰 여부 확인 → 중복 시 409 Conflict
+4. **발급 처리**:
+   - `coupon_templates.issued_quantity` 증가
+   - `user_coupons` 테이블에 INSERT: `ref_member_id`, `ref_coupon_template_id`, `status=AVAILABLE`
+5. **응답**: 201 Created
+   - `userCouponId`, `couponTemplateId`, `status`, `issuedAt`
+
+#### Exception Flow
+- **E1**: 쿠폰 템플릿 존재하지 않음 → 404 Not Found
+- **E2**: 쿠폰 만료됨 → 409 Conflict
+- **E3**: 발급 수량 초과 → 409 Conflict
+- **E4**: 중복 발급 시도 → 409 Conflict
+
+---
+
+### UC-C12: 내 쿠폰 목록 조회 (GET /api/v1/users/me/coupons)
+
+#### Main Flow
+1. **요청**: 사용자가 `memberId`로 보유 쿠폰 목록 조회
+2. **조회**:
+   - `user_coupons` 테이블에서 `ref_member_id`로 필터링
+   - JOIN `coupon_templates` ON `user_coupons.ref_coupon_template_id = coupon_templates.id`
+3. **만료 상태 동적 계산**:
+   - DB에는 `AVAILABLE`/`USED`만 저장
+   - 응답 시: `status == AVAILABLE && template.expiredAt < now()` → `EXPIRED`로 변환
+4. **응답**: 200 OK
+   - 쿠폰 배열: `userCouponId`, `couponName`, `type`, `value`, `status(AVAILABLE/USED/EXPIRED)`, `expiredAt`
+
+#### Alternate Flow
+- **A1**: 보유 쿠폰 없음 → 빈 배열 반환
+
+---
+
+### UC-A15: 쿠폰 템플릿 생성 (POST /api-admin/v1/coupons)
+
+#### Main Flow
+1. **요청**: 어드민이 쿠폰 템플릿 생성 (name, type, value, totalQuantity, expiredAt, minOrderAmount?)
+2. **인증**: `X-Loopers-Ldap=loopers.admin` 검증 → 실패 시 403 Forbidden
+3. **입력 검증**:
+   - `type` in [FIXED, RATE]
+   - FIXED: value > 0, RATE: 0 < value <= 100
+   - `totalQuantity` >= 1
+   - `expiredAt` > now()
+4. **저장**: `coupon_templates` 테이블에 INSERT (issuedQuantity = 0)
+5. **응답**: 201 Created
+
+#### Exception Flow
+- **E1**: 인증 실패 → 403 Forbidden
+- **E2**: 입력 검증 실패 → 400 Bad Request
+
+---
+
+### UC-A17: 쿠폰 템플릿 삭제 (DELETE /api-admin/v1/coupons/{couponId})
+
+#### Main Flow
+1. **요청**: 어드민이 쿠폰 템플릿 삭제
+2. **인증**: `X-Loopers-Ldap=loopers.admin` 검증
+3. **조회**: `couponTemplateId`로 템플릿 조회 → 없으면 404 Not Found
+4. **Soft Delete**: `deleted_at = NOW()` UPDATE
+5. **응답**: 204 No Content
 
 ---
 
@@ -411,6 +512,9 @@
 | 도메인 | 경합 수준 | 중요도 | 전략 |
 |--------|-----------|--------|------|
 | 재고 (stock) | **높음** | **비즈니스 핵심** | **비관적 락** (`SELECT ... FOR UPDATE`) |
+| 쿠폰 발급 (issue) | **높음** | **비즈니스 핵심** | **비관적 락** (`SELECT ... FOR UPDATE` on coupon_templates) |
+| 쿠폰 사용 (use) | **높음** | **비즈니스 핵심** | **조건부 UPDATE** (`WHERE status='AVAILABLE'`, rowsAffected 체크) |
+| 쿠폰 복원 (restore) | 낮음 | 정합성 | **조건부 UPDATE** (`WHERE status='USED'`, idempotent) |
 | 좋아요 (like) | 낮음 | 참고 데이터 | DB UNIQUE 제약 (`uk_likes_member_product`) |
 
 **재고 차감 (비관적 락)**:
