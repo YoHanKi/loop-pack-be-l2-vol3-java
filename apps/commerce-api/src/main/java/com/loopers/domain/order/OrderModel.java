@@ -88,11 +88,6 @@ public class OrderModel extends BaseEntity {
         return final_.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : final_;
     }
 
-    @Deprecated
-    public BigDecimal getTotalAmount() {
-        return getFinalAmount();
-    }
-
     private void addOrderItem(OrderItemModel item) {
         this.orderItems.add(item);
         item.setOrder(this);

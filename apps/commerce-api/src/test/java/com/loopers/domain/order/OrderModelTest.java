@@ -61,7 +61,7 @@ class OrderModelTest {
             OrderModel order = OrderModel.create(memberId, List.of(item1, item2));
 
             // when
-            BigDecimal totalAmount = order.getTotalAmount();
+            BigDecimal totalAmount = order.getFinalAmount();
 
             // then
             assertThat(totalAmount).isEqualByComparingTo(new BigDecimal("40000"));

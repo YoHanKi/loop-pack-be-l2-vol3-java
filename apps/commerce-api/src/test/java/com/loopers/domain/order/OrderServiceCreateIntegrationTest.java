@@ -66,7 +66,7 @@ class OrderServiceCreateIntegrationTest {
         assertThat(order.getOrderId()).isNotNull();
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);
         assertThat(order.getOrderItems()).hasSize(1);
-        assertThat(order.getTotalAmount()).isEqualByComparingTo(new BigDecimal("300000.00")); // 100000 * 3
+        assertThat(order.getFinalAmount()).isEqualByComparingTo(new BigDecimal("300000.00")); // 100000 * 3
 
         // 재고 감소 확인
         ProductModel updatedProduct = productRepository.findByProductId(new ProductId("prod1")).orElseThrow();
@@ -144,7 +144,7 @@ class OrderServiceCreateIntegrationTest {
 
         // then
         assertThat(order.getOrderItems()).hasSize(2);
-        assertThat(order.getTotalAmount()).isEqualByComparingTo(new BigDecimal("800000.00")); // (100000*2) + (200000*3)
+        assertThat(order.getFinalAmount()).isEqualByComparingTo(new BigDecimal("800000.00")); // (100000*2) + (200000*3)
 
         // 재고 감소 확인
         ProductModel updatedProduct1 = productRepository.findByProductId(new ProductId("prod1")).orElseThrow();
