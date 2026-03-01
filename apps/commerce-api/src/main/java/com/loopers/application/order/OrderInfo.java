@@ -11,7 +11,10 @@ public record OrderInfo(
         String orderId,
         Long refMemberId,
         String status,
-        BigDecimal totalAmount,
+        BigDecimal originalAmount,
+        BigDecimal discountAmount,
+        BigDecimal finalAmount,
+        Long refUserCouponId,
         List<OrderItemInfo> items
 ) {
     public static OrderInfo from(OrderModel order) {
@@ -20,7 +23,10 @@ public record OrderInfo(
                 order.getOrderId().value(),
                 order.getRefMemberId().value(),
                 order.getStatus().name(),
-                order.getTotalAmount(),
+                order.getOriginalAmount(),
+                order.getDiscountAmount(),
+                order.getFinalAmount(),
+                order.getRefUserCouponId(),
                 order.getOrderItems().stream()
                         .map(OrderItemInfo::from)
                         .toList()

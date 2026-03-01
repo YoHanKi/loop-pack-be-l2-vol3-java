@@ -11,6 +11,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -23,11 +24,25 @@ public class OrderApp {
 
     @Transactional
     public OrderInfo createOrder(Long memberId, List<OrderItemCommand> items) {
+        return createOrder(memberId, items, BigDecimal.ZERO, null);
+    }
+
+    @Transactional
+    public OrderInfo createOrder(Long memberId, List<OrderItemCommand> items,
+                                 BigDecimal discountAmount, Long refUserCouponId) {
         List<OrderItemRequest> orderItems = items.stream()
                 .map(OrderItemCommand::toOrderItemRequest)
                 .toList();
-        OrderModel order = orderService.createOrder(memberId, orderItems);
+        OrderModel order = orderService.createOrder(memberId, orderItems, discountAmount, refUserCouponId);
         return OrderInfo.from(order);
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal calculateOriginalAmount(List<OrderItemCommand> items) {
+        List<OrderItemRequest> orderItems = items.stream()
+                .map(OrderItemCommand::toOrderItemRequest)
+                .toList();
+        return orderService.calculateOriginalAmount(orderItems);
     }
 
     @Transactional

@@ -22,7 +22,9 @@ public class OrderV1Dto {
             @NotNull(message = "주문 항목은 필수입니다.")
             @NotEmpty(message = "주문 항목은 1개 이상이어야 합니다.")
             @Valid
-            List<OrderItemRequest> items
+            List<OrderItemRequest> items,
+
+            String userCouponId
     ) {}
 
     public record OrderItemRequest(
@@ -47,7 +49,10 @@ public class OrderV1Dto {
             String orderId,
             Long refMemberId,
             String status,
-            BigDecimal totalAmount,
+            BigDecimal originalAmount,
+            BigDecimal discountAmount,
+            BigDecimal finalAmount,
+            Long refUserCouponId,
             List<OrderItemResponse> items
     ) {
         public static OrderResponse from(OrderInfo info) {
@@ -56,7 +61,10 @@ public class OrderV1Dto {
                     info.orderId(),
                     info.refMemberId(),
                     info.status(),
-                    info.totalAmount(),
+                    info.originalAmount(),
+                    info.discountAmount(),
+                    info.finalAmount(),
+                    info.refUserCouponId(),
                     info.items().stream()
                             .map(OrderItemResponse::from)
                             .toList()

@@ -34,21 +34,33 @@ public class OrderModel extends BaseEntity {
     @Column(name = "status", nullable = false, length = 20)
     private OrderStatus status;
 
+    @Column(name = "discount_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal discountAmount;
+
+    @Column(name = "ref_user_coupon_id")
+    private Long refUserCouponId;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItemModel> orderItems = new ArrayList<>();
 
-    private OrderModel(Long memberId, List<OrderItemModel> items) {
+    private OrderModel(Long memberId, List<OrderItemModel> items, BigDecimal discountAmount, Long refUserCouponId) {
         this.orderId = OrderId.generate();
         this.refMemberId = new RefMemberId(memberId);
         this.status = OrderStatus.PENDING;
+        this.discountAmount = discountAmount != null ? discountAmount : BigDecimal.ZERO;
+        this.refUserCouponId = refUserCouponId;
         items.forEach(this::addOrderItem);
     }
 
-    public static OrderModel create(Long memberId, List<OrderItemModel> items) {
+    public static OrderModel create(Long memberId, List<OrderItemModel> items, BigDecimal discountAmount, Long refUserCouponId) {
         if (items == null || items.isEmpty()) {
             throw new CoreException(ErrorType.BAD_REQUEST, "주문 상품이 비어 있습니다.");
         }
-        return new OrderModel(memberId, items);
+        return new OrderModel(memberId, items, discountAmount, refUserCouponId);
+    }
+
+    public static OrderModel create(Long memberId, List<OrderItemModel> items) {
+        return create(memberId, items, BigDecimal.ZERO, null);
     }
 
     public void cancel() {
@@ -64,10 +76,21 @@ public class OrderModel extends BaseEntity {
         return this.refMemberId.value().equals(memberId);
     }
 
-    public BigDecimal getTotalAmount() {
+    public BigDecimal getOriginalAmount() {
         return orderItems.stream()
                 .map(OrderItemModel::getTotalPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public BigDecimal getFinalAmount() {
+        BigDecimal original = getOriginalAmount();
+        BigDecimal final_ = original.subtract(discountAmount);
+        return final_.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : final_;
+    }
+
+    @Deprecated
+    public BigDecimal getTotalAmount() {
+        return getFinalAmount();
     }
 
     private void addOrderItem(OrderItemModel item) {
