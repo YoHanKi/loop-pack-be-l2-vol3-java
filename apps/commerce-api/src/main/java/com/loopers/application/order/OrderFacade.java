@@ -23,8 +23,8 @@ public class OrderFacade {
         if (userCouponId != null && !userCouponId.isBlank()) {
             // 원래 주문금액 계산 (재고 차감 전 조회)
             BigDecimal originalAmount = orderApp.calculateOriginalAmount(items);
-            // 할인 금액 계산
-            discountAmount = couponApp.calculateDiscount(userCouponId, originalAmount);
+            // 할인 금액 계산 (소유권 포함 검증)
+            discountAmount = couponApp.calculateDiscount(userCouponId, memberId, originalAmount);
             // 쿠폰 사용 처리 → PK 반환
             refUserCouponId = couponApp.useUserCoupon(userCouponId);
         }

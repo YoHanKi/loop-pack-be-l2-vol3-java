@@ -71,10 +71,14 @@ public class CouponService {
         return userCouponRepository.save(userCoupon);
     }
 
-    public BigDecimal calculateDiscount(String userCouponIdValue, BigDecimal originalAmount) {
+    public BigDecimal calculateDiscount(String userCouponIdValue, Long memberId, BigDecimal originalAmount) {
         UserCouponId userCouponId = new UserCouponId(userCouponIdValue);
         UserCouponModel userCoupon = userCouponRepository.findByUserCouponId(userCouponId)
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "사용자 쿠폰이 존재하지 않습니다."));
+
+        if (!userCoupon.getRefMemberId().equals(memberId)) {
+            throw new CoreException(ErrorType.FORBIDDEN, "본인 소유의 쿠폰만 사용할 수 있습니다.");
+        }
 
         if (!userCoupon.isAvailable()) {
             throw new CoreException(ErrorType.CONFLICT, "사용 가능한 쿠폰이 아닙니다.");

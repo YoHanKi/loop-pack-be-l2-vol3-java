@@ -96,8 +96,8 @@ public class CouponApp {
     }
 
     @Transactional(readOnly = true)
-    public BigDecimal calculateDiscount(String userCouponId, BigDecimal originalAmount) {
-        return couponService.calculateDiscount(userCouponId, originalAmount);
+    public BigDecimal calculateDiscount(String userCouponId, Long memberId, BigDecimal originalAmount) {
+        return couponService.calculateDiscount(userCouponId, memberId, originalAmount);
     }
 
     /**
