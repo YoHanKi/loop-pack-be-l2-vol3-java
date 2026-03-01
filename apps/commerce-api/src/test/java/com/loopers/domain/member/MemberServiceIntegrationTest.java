@@ -1,6 +1,8 @@
 package com.loopers.domain.member;
 
+import com.loopers.domain.member.vo.MemberId;
 import com.loopers.infrastructure.member.MemberJpaRepository;
+import com.loopers.security.PasswordHasher;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
@@ -27,9 +29,6 @@ import static org.mockito.Mockito.*;
 class MemberServiceIntegrationTest {
     @Autowired
     private MemberService memberService;
-
-    @Autowired
-    private MemberReader memberReader;
 
     @Autowired
     private MemberJpaRepository memberJpaRepository;
@@ -241,7 +240,7 @@ class MemberServiceIntegrationTest {
             memberService.changePassword(VALID_MEMBER_ID, VALID_PASSWORD, VALID_PASSWORD, newPassword);
 
             // assert
-            MemberModel member = memberReader.getOrThrow(VALID_MEMBER_ID);
+            MemberModel member = memberJpaRepository.findByMemberId(new MemberId(VALID_MEMBER_ID)).orElseThrow();
             assertThat(member.verifyPassword(passwordHasher, newPassword)).isTrue();
         }
 
@@ -338,7 +337,7 @@ class MemberServiceIntegrationTest {
             );
 
             // act
-            MemberModel foundMember = memberReader.getMemberByMemberId(VALID_MEMBER_ID);
+            MemberModel foundMember = spyMemberRepository.findByMemberId(new MemberId(VALID_MEMBER_ID)).orElse(null);
 
             // assert
             assertAll(
@@ -362,7 +361,7 @@ class MemberServiceIntegrationTest {
             String nonExistentMemberId = "nonexist1";
 
             // act
-            MemberModel foundMember = memberReader.getMemberByMemberId(nonExistentMemberId);
+            MemberModel foundMember = spyMemberRepository.findByMemberId(new MemberId(nonExistentMemberId)).orElse(null);
 
             // assert
             assertThat(foundMember).isNull();

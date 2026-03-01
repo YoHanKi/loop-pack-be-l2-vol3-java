@@ -1,6 +1,6 @@
 package com.loopers.infrastructure.jpa.converter;
 
-import com.loopers.domain.member.BirthDate;
+import com.loopers.domain.member.vo.BirthDate;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 

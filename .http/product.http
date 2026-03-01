@@ -1,0 +1,97 @@
+### Product API 테스트
+
+### 1. 상품 생성 (먼저 브랜드를 생성해야 함)
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+
+{
+  "productId": "prod001",
+  "brandId": "nike",
+  "productName": "Nike Air Max 2024",
+  "price": 150000,
+  "stockQuantity": 100
+}
+
+### 2. 상품 목록 조회 (전체)
+GET http://localhost:8080/api/v1/products?page=0&size=10&sort=latest
+
+### 3. 상품 목록 조회 (브랜드 필터링)
+GET http://localhost:8080/api/v1/products?brandId=nike&page=0&size=10&sort=latest
+
+### 4. 상품 목록 조회 (가격 낮은순 정렬)
+GET http://localhost:8080/api/v1/products?page=0&size=10&sort=price_asc
+
+### 5. 상품 삭제
+DELETE http://localhost:8080/api/v1/products/prod001
+
+### 6. 여러 상품 생성 (테스트용)
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+
+{
+  "productId": "prod002",
+  "brandId": "nike",
+  "productName": "Nike Air Force 1",
+  "price": 120000,
+  "stockQuantity": 50
+}
+
+###
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+
+{
+  "productId": "prod003",
+  "brandId": "nike",
+  "productName": "Nike Dunk Low",
+  "price": 130000,
+  "stockQuantity": 30
+}
+
+### 7. 중복 상품 ID 테스트 (409 Conflict 예상)
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+
+{
+  "productId": "prod001",
+  "brandId": "nike",
+  "productName": "Duplicate Product",
+  "price": 100000,
+  "stockQuantity": 10
+}
+
+### 8. 존재하지 않는 브랜드 테스트 (404 Not Found 예상)
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+
+{
+  "productId": "prod999",
+  "brandId": "nobrand",
+  "productName": "No Brand Product",
+  "price": 100000,
+  "stockQuantity": 10
+}
+
+### 9. 유효성 검증 테스트 - 빈 상품명 (400 Bad Request 예상)
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+
+{
+  "productId": "prod004",
+  "brandId": "nike",
+  "productName": "",
+  "price": 100000,
+  "stockQuantity": 10
+}
+
+### 10. 유효성 검증 테스트 - 음수 가격 (400 Bad Request 예상)
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+
+{
+  "productId": "prod005",
+  "brandId": "nike",
+  "productName": "Invalid Price Product",
+  "price": -1000,
+  "stockQuantity": 10
+}

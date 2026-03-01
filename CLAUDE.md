@@ -44,9 +44,9 @@ Root
 ```
 Interfaces Layer (Controller, ApiSpec, Dto)
     ↓
-Application Layer (Facade, Info)
+Application Layer (App, Facade, Info)
     ↓
-Domain Layer (Model, Reader, Service, Repository, VO)
+Domain Layer (Model, Service, Repository, VO)
     ↓
 Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 ```
@@ -55,12 +55,13 @@ Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 
 **Domain Layer** - 핵심 비즈니스 로직
 - **Model**: JPA Entity, `BaseEntity` 상속, 정적 팩토리 `create()`, 도메인 행위 메서드
-- **Reader**: 읽기 전용 조회, VO 변환, 조회+예외 통합 (`getOrThrow`)
-- **Service**: 교차 엔티티 규칙 (중복 체크 등), 트랜잭션 관리
+- **Service**: 비즈니스 규칙 검증, 상태 변경, 크로스 도메인 조율 등 비즈니스 로직 담당. 단순 조회만 하는 경우 App에서 Repository 직접 호출 허용
+- **Repository**: 데이터 조회 및 저장, `findByXXX().orElseThrow()` 패턴 사용
 - **Value Object**: `record` 타입, Compact Constructor 검증, 불변
 
 **Application Layer** - 유스케이스 조합
-- **Facade**: 여러 도메인 서비스 조합
+- **App**: 단일 도메인 유스케이스 처리. Service 또는 Repository 호출 및 Model → Info 변환 담당
+- **Facade**: **2개 이상의 App을 조합**할 때만 사용. 크로스 도메인 오케스트레이션
 
 **Interfaces Layer** - 외부 통신
 - **Controller**: REST API, `ApiResponse` 반환
@@ -77,13 +78,15 @@ Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 
 ### 네이밍 규칙
 - Entity: `{Domain}Model` (예: `MemberModel`)
-- Reader: `{Domain}Reader`
 - Service: `{Domain}Service`
 - Repository: `{Domain}Repository` / `{Domain}RepositoryImpl` / `{Domain}JpaRepository`
 - Controller: `{Domain}V{version}Controller`
 - DTO: `{Domain}V{version}Dto`
 - Value Object: `{Name}` (예: `MemberId`, `Email`)
 - Converter: `{ValueObject}Converter`
+- App: `{Domain}App` (예: `MemberApp`) — 단일 도메인 유스케이스
+- Facade: `{Domain}Facade` (예: `OrderFacade`) — 2개 이상 App 조합 시에만 사용
+- Info: `{Domain}Info` (예: `MemberInfo`) — Application 레이어 결과 VO
 
 ### 타입 사용
 - **Entity**: `class` (가변 상태)
@@ -121,6 +124,15 @@ Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 - ❌ null-safety 위반 금지 (Optional 활용)
 - ❌ println 코드 남기지 말 것 (`@Slf4j` 사용)
 - ❌ 테스트 임의 삭제/수정 금지 (`@Disabled`, assertion 약화 금지)
+- ❌ `var` 키워드 사용 금지 — 반드시 명시적 타입으로 선언
+- ❌ `EntityManager` 직접 사용 금지 — JpaRepository `@Query`로 대체
+- ❌ 비즈니스 로직(검증·상태변경·크로스도메인)이 있는 경우 App에서 Repository 직접 의존 금지 — 반드시 Service 경유
+- ✅ 단순 조회(비즈니스 규칙·상태 변경 없음)는 App에서 Repository 직접 의존 허용
+- ❌ App → App 의존 금지 (크로스 도메인은 Facade 책임)
+- ❌ Facade → Facade 의존 금지
+- ❌ Facade → Service 직접 호출 금지 — 반드시 App 경유
+- ❌ Facade를 단일 도메인에서만 사용 금지 — App을 사용할 것
+- ❌ 클래스/record 내부에 nested 클래스/record 정의 금지 — 별도 파일로 분리
 
 ### Recommendation (권장사항)
 - ✅ 실제 API를 호출해 확인하는 E2E 테스트 작성
@@ -141,37 +153,6 @@ Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 ### 프로파일
 - **local**: 로컬 개발 / **test**: 테스트 (TestContainers)
 - **dev**: 개발 서버 / **qa**: QA 서버 / **prd**: 운영 서버
-
-### 인프라 실행
-```bash
-# MySQL, Redis, Kafka
-docker-compose -f ./docker/infra-compose.yml up
-
-# Prometheus, Grafana
-docker-compose -f ./docker/monitoring-compose.yml up
-```
-
-### 접속 정보
-- Swagger UI: http://localhost:8080/swagger-ui.html
-- Grafana: http://localhost:3000 (admin/admin)
-
----
-
-## 빌드 및 실행
-
-```bash
-# 전체 빌드
-./gradlew clean build
-
-# 테스트
-./gradlew test
-
-# 커버리지
-./gradlew test jacocoTestReport
-
-# commerce-api 실행
-./gradlew :apps:commerce-api:bootRun
-```
 
 ---
 
@@ -200,6 +181,44 @@ docker-compose -f ./docker/monitoring-compose.yml up
 - `pr-creation`: PR 작성 가이드
 - `domain-rules`: 도메인 비즈니스 규칙
 - `jpa-database`: JPA, BaseEntity, Converter 패턴
+
+---
+
+## 도메인 & 객체 설계 전략
+
+- 도메인 모델링은 데이터 설계가 아니라 **업무 규칙을 객체 책임으로 고정**하는 작업입니다.
+- **Entity**: ID로 동일성 판단, 상태 변화와 연속성이 핵심(행위를 내부에 둠).
+- **VO**: 값 자체가 핵심, 불변 + 생성 시 유효성 강제(원시타입 규칙 중복 제거).
+- **Domain Service**: 특정 엔티티에 두기 부자연스러운 "도메인 규칙"만, 무상태로 둠.
+- **Application Service(Usecase)**: 트랜잭션/권한/저장/외부연동 등 "흐름 조립" 담당, 규칙은 도메인에 위임.
+- 규칙이 여러 서비스에 반복되면 → **도메인(엔티티/VO/도메인서비스)로 내려갈 신호**입니다.
+- 관계 자체가 의미를 가지면(누가/언제/중복/취소/이력) → `Like`처럼 **독립 도메인으로 분리**합니다.
+- 동시성 규칙은 if문만 믿지 말고 **DB 제약(유니크)로 최종 방어선**을 둡니다.
+- 의존 방향은 **Interfaces → Application → Domain ← Infrastructure**(Repo 인터페이스는 Domain, 구현은 Infra).
+- 리뷰 기준: 도메인이 기술(Spring/JPA/HTTP)을 모르고, 컬렉션/상태 변경은 루트가 통제하며, 테스트는 Fake로 가능해야 합니다.
+
+---
+
+## 아키텍처, 패키지 구성 전략
+
+- **레이어 의존성 방향 (단일 도메인, 비즈니스 로직 있음)**: `Controller → App → Service → Repository`
+- **레이어 의존성 방향 (단일 도메인, 단순 조회)**: `Controller → App → Repository`
+- **레이어 의존성 방향 (크로스 도메인)**: `Controller → Facade → App(복수) → Service/Repository`
+- Infrastructure는 Domain 인터페이스 구현 (Port-Adapter).
+- **App 원칙**: App은 단일 도메인의 유스케이스를 처리. Model → Info 변환 담당. 비즈니스 로직은 Service에 위임. 단순 조회는 Repository 직접 호출 허용.
+- **Facade 사용 조건**: **2개 이상의 App을 조합할 때만** Facade를 사용. 단일 도메인은 App으로 처리.
+- **App 어노테이션**: App은 `@Component`, Service는 `@Service`, Facade는 `@Component` — 절대 혼용 금지.
+- **App 의존성**: App → Service (비즈니스 로직), App → Repository (단순 조회) 허용. App → App 의존은 금지.
+- **Facade 의존성**: Facade → App만 허용 (2개 이상). Facade → Service 직접 호출, Facade → Repository 직접 의존, Facade → Facade 의존은 모두 금지.
+- **크로스 도메인 오케스트레이션**: 여러 도메인을 걸치는 연쇄 처리(cascade 등)는 Service가 아닌 Facade에서 App을 통해 조율.
+- **DTO vs Info vs Model 분리**: DTO(HTTP 계층) → Info(Application 결과 VO) → Model(Domain Entity), 각 레이어 독립성 유지.
+- **Service 책임**: 비즈니스 규칙 검증, 상태 변경, 크로스 도메인 Repository 조율. 단순 조회만 하는 경우 Service 생략 가능.
+- **Service 크로스 도메인**: Service는 트랜잭션 원자성을 위해 타 도메인 Repository를 직접 사용 가능. 이때 해당 도메인 VO import도 허용.
+- **Repository Pattern**: Domain에 Repository 인터페이스(Port), Infrastructure에 구현체(Adapter), Domain이 Infrastructure를 모름.
+- **도메인 VO 소유권**: Model과 Repository 인터페이스는 자기 도메인 vo만 사용. `RefMemberId` 같은 참조 VO는 사용하는 도메인이 자기 vo 패키지에 별도 정의.
+- **Info 변환**: App에서 Model → Info 변환, Controller는 Model 노출 금지(Info만 사용), 레이어 격리 유지.
+- **컴포넌트 책임**: Controller(HTTP), App(단일 도메인 유스케이스 + Info 변환), Facade(복수 App 조합), Service(비즈니스 로직 + 조회), Repository(영속화).
+- **메서드 네이밍**: 타 도메인 PK를 파라미터로 받는 메서드는 `RefId` 접미사 사용 (`DbId` 금지). 예: `getProductByRefId(Long id)`.
 
 ---
 

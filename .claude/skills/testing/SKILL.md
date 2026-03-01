@@ -45,6 +45,131 @@ void testExample() {
 }
 ```
 
+**주석 규칙:**
+- 단위/통합 테스트: `// given`, `// when`, `// then`
+- E2E 테스트: `// arrange`, `// act`, `// assert`
+
+### @Nested 테스트 구조 패턴
+
+**목적:** 관련된 테스트를 논리적으로 그룹화하여 가독성 향상
+
+**구조:**
+```java
+@DisplayName("{Entity} 엔티티")
+class EntityTest {
+
+    @DisplayName("{행위}를 할 때,")
+    @Nested
+    class ContextGroup {
+        @Test
+        @DisplayName("{조건}이면 {결과}")
+        void test_method_name() {
+            // given: 테스트 데이터 준비
+
+            // when: 테스트 대상 실행
+
+            // then: 결과 검증
+        }
+    }
+}
+```
+
+**네이밍 컨벤션:**
+- **테스트 클래스 DisplayName**: `"{Entity} 엔티티"` 또는 `"{Domain} {레이어}"`
+- **@Nested 클래스명**: 영어 명사/동사 (Create, Delete, DecreaseStock 등)
+- **@Nested DisplayName**: 한글 동사구 + 쉼표 (예: `"브랜드를 생성할 때,"`, `"재고를 차감할 때,"`)
+- **테스트 메서드명**: 영어 snake_case (예: `create_brand_model`, `decreaseStock_success`)
+- **테스트 메서드 DisplayName**: 한글 명사구 (예: `"create() 정적 팩토리로 BrandModel 생성 성공"`)
+
+**실제 예시 - Entity 테스트:**
+```java
+@DisplayName("ProductModel Entity")
+class ProductModelTest {
+
+    @DisplayName("상품을 생성할 때,")
+    @Nested
+    class Create {
+        @Test
+        @DisplayName("create() 정적 팩토리로 ProductModel 생성 성공")
+        void create_product_model() {
+            // given
+            String productId = "prod1";
+            String brandId = "nike";
+            String productName = "Nike Air Max";
+            BigDecimal price = new BigDecimal("150000");
+            int stockQuantity = 100;
+
+            // when
+            ProductModel product = ProductModel.create(productId, brandId, productName, price, stockQuantity);
+
+            // then
+            assertThat(product.getProductId()).isEqualTo(new ProductId(productId));
+            assertThat(product.getBrandId()).isEqualTo(new BrandId(brandId));
+            assertThat(product.getStockQuantity().value()).isEqualTo(stockQuantity);
+        }
+    }
+
+    @DisplayName("재고를 차감할 때,")
+    @Nested
+    class DecreaseStock {
+        @Test
+        @DisplayName("재고가 충분하면 차감 성공")
+        void decreaseStock_success() {
+            // given
+            ProductModel product = ProductModel.create("prod1", "nike", "Nike Air", new BigDecimal("100000"), 50);
+
+            // when
+            product.decreaseStock(10);
+
+            // then
+            assertThat(product.getStockQuantity().value()).isEqualTo(40);
+        }
+
+        @Test
+        @DisplayName("재고가 부족하면 예외 발생")
+        void decreaseStock_insufficient_stock_throws_exception() {
+            // given
+            ProductModel product = ProductModel.create("prod1", "nike", "Nike Air", new BigDecimal("100000"), 5);
+
+            // when & then
+            assertThatThrownBy(() -> product.decreaseStock(10))
+                    .isInstanceOf(CoreException.class)
+                    .hasMessageContaining("재고가 부족합니다");
+        }
+    }
+
+    @DisplayName("상품을 삭제할 때,")
+    @Nested
+    class Delete {
+        @Test
+        @DisplayName("markAsDeleted() 호출 시 deletedAt 설정됨")
+        void mark_as_deleted_sets_deletedAt() {
+            // given
+            ProductModel product = ProductModel.create("prod1", "nike", "Nike Air", new BigDecimal("100000"), 50);
+            assertThat(product.isDeleted()).isFalse();
+
+            // when
+            product.markAsDeleted();
+
+            // then
+            assertThat(product.isDeleted()).isTrue();
+            assertThat(product.getDeletedAt()).isNotNull();
+        }
+    }
+}
+```
+
+**@Nested 사용 시기:**
+- ✅ Entity 테스트: 도메인 행위별 그룹화 (Create, Update, Delete 등)
+- ✅ Service/Facade 통합 테스트: 유스케이스별 그룹화 (Register, Login 등)
+- ✅ Controller E2E 테스트: 엔드포인트별 그룹화 (POST /api/v1/members 등)
+- ❌ Value Object 단위 테스트: 단순한 경우 @Nested 불필요
+
+**장점:**
+- 테스트 리포트의 계층 구조로 가독성 향상
+- 관련 테스트끼리 논리적으로 묶어 관리 용이
+- 각 @Nested 클래스에서 공통 setup 가능 (@BeforeEach)
+
 ---
 
 ## 단위 테스트 (Unit Test)

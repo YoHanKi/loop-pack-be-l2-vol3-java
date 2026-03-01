@@ -1,0 +1,32 @@
+### 브랜드 생성
+POST http://localhost:8080/api/v1/brands
+Content-Type: application/json
+
+{
+  "brandId": "nike",
+  "brandName": "Nike"
+}
+
+### 브랜드 생성 - Adidas
+POST http://localhost:8080/api/v1/brands
+Content-Type: application/json
+
+{
+  "brandId": "adidas",
+  "brandName": "Adidas"
+}
+
+### 브랜드 생성 - 중복 ID (실패 케이스)
+POST http://localhost:8080/api/v1/brands
+Content-Type: application/json
+
+{
+  "brandId": "nike",
+  "brandName": "Nike Duplicate"
+}
+
+### 브랜드 삭제
+DELETE http://localhost:8080/api/v1/brands/nike
+
+### 브랜드 삭제 - 존재하지 않는 브랜드 (실패 케이스)
+DELETE http://localhost:8080/api/v1/brands/nonexistent

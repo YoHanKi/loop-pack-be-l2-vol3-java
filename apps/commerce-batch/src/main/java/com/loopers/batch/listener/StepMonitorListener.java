@@ -23,8 +23,8 @@ public class StepMonitorListener implements StepExecutionListener {
     @Override
     public ExitStatus afterStep(@Nonnull StepExecution stepExecution) {
         if (!stepExecution.getFailureExceptions().isEmpty()) {
-            var jobName = stepExecution.getJobExecution().getJobInstance().getJobName();
-            var exceptions = stepExecution.getFailureExceptions().stream()
+            String jobName = stepExecution.getJobExecution().getJobInstance().getJobName();
+            String exceptions = stepExecution.getFailureExceptions().stream()
                     .map(Throwable::getMessage)
                     .filter(Objects::nonNull)
                     .collect(Collectors.joining("\n"));

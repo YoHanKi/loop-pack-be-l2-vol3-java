@@ -23,10 +23,16 @@ allowed-tools: Read, Grep
 | Controller | `{Domain}V{version}Controller` | `MemberV1Controller` | `interfaces.api.{domain}` |
 | API Spec | `{Domain}V{version}ApiSpec` | `MemberV1ApiSpec` | `interfaces.api.{domain}` |
 | DTO | `{Domain}V{version}Dto` | `MemberV1Dto` | `interfaces.api.{domain}` |
-| Facade | `{Domain}Facade` | `MemberFacade` | `application.{domain}` |
+| **App** | `{Domain}App` | `MemberApp`, `OrderApp` | `application.{domain}` |
+| **Facade** | `{Domain}Facade` | `OrderFacade` | `application.{domain}` |
 | Info | `{Domain}Info` | `MemberInfo` | `application.{domain}` |
 | Exception | `{Concept}Exception` | `CoreException` | `support.error` |
 | Converter | `{ValueObject}Converter` | `MemberIdConverter` | `infrastructure.jpa.converter` |
+
+> **App vs Facade 선택 기준**:
+> - 단일 도메인 유스케이스 → **`{Domain}App`** 사용
+> - 2개 이상의 App을 조합하는 크로스 도메인 → **`{Domain}Facade`** 사용
+> - Facade는 반드시 2개 이상의 App을 호출할 때만 생성 (단일 App만 쓰는 Facade 금지)
 
 ### 메서드 네이밍
 
@@ -39,6 +45,15 @@ allowed-tools: Read, Grep
 
 #### Service
 - 도메인 용어 사용: `register`, `getMemberByMemberId`, `updateProfile`, `withdraw`
+- 타 도메인 PK(DB id)를 파라미터로 받는 메서드: **`RefId` 접미사** 사용 (`DbId` 사용 금지)
+  ```java
+  // ✅ 올바름
+  ProductModel getProductByRefId(Long id)
+  void deleteProductsByBrandRefId(Long brandDbId)
+  BrandModel getBrandByRefId(Long id)
+  // ❌ 금지
+  ProductModel getProductByDbId(Long id)
+  ```
 
 #### Controller
 - RESTful 원칙: GET (조회), POST (생성), PUT (전체 수정), PATCH (부분 수정), DELETE (삭제)
@@ -401,6 +416,34 @@ public record Email(String address) {
 5. **Unused Import**: 사용하지 않는 import 제거
 6. **Raw Type**: 제네릭 타입 명시
 7. **Exception Swallowing**: 예외를 무시하지 말 것
+8. **`var` 키워드 사용 금지**: 반드시 명시적 타입 사용
+   ```java
+   // ❌ 금지
+   var product = productRepository.findById(id);
+   // ✅ 허용
+   Optional<ProductModel> product = productRepository.findById(id);
+   ```
+9. **중첩 클래스/레코드 정의 금지**: 클래스나 record 내부에 다른 record/class 정의 금지 → 별도 파일로 분리
+   ```java
+   // ❌ 금지
+   public class OrderApp {
+       public record OrderCommand(String productId, int qty) {}
+   }
+   // ✅ 허용: OrderCommand.java 별도 파일로 생성
+   ```
+10. **단일 도메인에 Facade 생성 금지**: 단일 도메인은 App으로 처리
+    ```java
+    // ❌ 금지: MemberFacade가 MemberApp 하나만 사용하는 경우
+    public class MemberFacade {
+        private final MemberApp memberApp;  // 단일 App만 사용 → Facade 불필요
+    }
+    // ✅ 허용: App 직접 사용
+    public class MemberV1Controller {
+        private final MemberApp memberApp;
+    }
+    ```
+11. **App/Facade에서 Repository 직접 의존 금지**: 반드시 Service 경유
+12. **Facade에서 Service 직접 호출 금지**: 반드시 App 경유
 
 ### ✅ Best Practices
 1. **불변 객체 선호**: `record`, `final` 활용

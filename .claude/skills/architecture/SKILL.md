@@ -18,7 +18,7 @@ allowed-tools: Read, Grep
               ↓
 ┌─────────────────────────────────────────┐
 │        Application Layer                │  ← 유스케이스 조합
-│         (Facade, Info)                  │
+│       (App, Facade, Info)               │
 └─────────────────────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
@@ -233,36 +233,73 @@ public interface MemberRepository {
 ## Application Layer (응용 계층)
 
 ### 책임
-- 여러 도메인 서비스 조합
-- 유스케이스 구현
-- 트랜잭션 경계 설정 (선택적)
+- **App**: 단일 도메인의 유스케이스 처리, Service 호출 및 Model → Info 변환
+- **Facade**: **2개 이상의 App을 조합**할 때만 사용, 크로스 도메인 오케스트레이션
 
-### Facade 예시
+### App 예시 (단일 도메인 — 기본 패턴)
 ```java
 @Component
 @RequiredArgsConstructor
-public class MemberFacade {
+public class MemberApp {
     private final MemberService memberService;
-    private final PointService pointService;
-    private final NotificationService notificationService;
 
-    @Transactional
-    public MemberInfo registerMemberWithWelcomePoint(MemberInfo.RegisterRequest request) {
-        // 1. 회원 가입
-        MemberModel member = memberService.register(
-            request.memberId(), request.password(), request.email(),
-            request.birthDate(), request.name(), request.gender()
-        );
-
-        // 2. 웰컴 포인트 지급
-        pointService.grantWelcomePoint(member.getMemberId());
-
-        // 3. 가입 환영 알림 발송
-        notificationService.sendWelcomeNotification(member.getEmail());
-
+    public MemberInfo register(String memberId, String password, String email,
+                               String birthDate, String name, Gender gender) {
+        MemberModel member = memberService.register(memberId, password, email, birthDate, name, gender);
         return MemberInfo.from(member);
     }
+
+    @Transactional(readOnly = true)
+    public MemberInfo getMe(String loginId, String loginPw) {
+        MemberModel member = memberService.authenticate(loginId, loginPw);
+        return MemberInfo.from(member);
+    }
+
+    public void changePassword(String loginId, String loginPw,
+                               String currentPassword, String newPassword) {
+        memberService.changePassword(loginId, loginPw, currentPassword, newPassword);
+    }
 }
+```
+
+**App 의존성 규칙**:
+```
+✅ App → Service (허용)
+❌ App → Repository 직접 의존 (금지)
+❌ App → App 의존 (금지 — 크로스 도메인은 Facade 책임)
+❌ App → Facade 의존 (금지)
+```
+
+### Facade 예시 (크로스 도메인 — 2개 이상 App 조합 시에만)
+```java
+@Component
+@RequiredArgsConstructor
+public class OrderFacade {
+    private final MemberApp memberApp;
+    private final ProductApp productApp;
+    private final OrderApp orderApp;
+
+    @Transactional
+    public OrderInfo placeOrder(String memberId, String productId, int quantity) {
+        // 1. 회원 확인
+        MemberInfo member = memberApp.getMe(memberId, /* ... */);
+
+        // 2. 상품 재고 확인 및 차감
+        productApp.decreaseStock(productId, quantity);
+
+        // 3. 주문 생성
+        return orderApp.createOrder(member.id(), productId, quantity);
+    }
+}
+```
+
+**Facade 의존성 규칙**:
+```
+✅ Facade → App (허용, 반드시 2개 이상)
+❌ Facade → Service 직접 호출 (금지 — 반드시 App 경유)
+❌ Facade → Repository 직접 의존 (금지)
+❌ Facade → Facade 의존 (금지)
+❌ 단일 도메인만 처리하는 Facade 생성 (금지 — App을 사용할 것)
 ```
 
 ---
@@ -282,18 +319,18 @@ public class MemberFacade {
 @RequestMapping("/api/v1/members")
 public class MemberV1Controller implements MemberV1ApiSpec {
 
-    private final MemberService memberService;
+    private final MemberApp memberApp;
 
     @PostMapping("/register")
     @Override
     public ApiResponse<MemberV1Dto.MemberResponse> register(
             @Valid @RequestBody MemberV1Dto.RegisterRequest request) {
-        MemberModel member = memberService.register(
+        MemberInfo info = memberApp.register(
             request.memberId(), request.password(), request.email(),
             request.birthDate(), request.name(), request.gender()
         );
 
-        MemberV1Dto.MemberResponse response = MemberV1Dto.MemberResponse.from(member);
+        MemberV1Dto.MemberResponse response = MemberV1Dto.MemberResponse.from(info);
         return ApiResponse.success(response);
     }
 }
@@ -374,8 +411,12 @@ com.loopers
 │   │   └── PasswordHasher.java    # Interface
 ├── application                     # 응용 계층
 │   ├── member
-│   │   ├── MemberFacade.java      # Facade
+│   │   ├── MemberApp.java         # App (단일 도메인 유스케이스)
 │   │   └── MemberInfo.java        # Info
+│   ├── order                       # 크로스 도메인 예시
+│   │   ├── OrderApp.java          # App (order 도메인)
+│   │   ├── OrderFacade.java       # Facade (MemberApp + ProductApp + OrderApp 조합)
+│   │   └── OrderInfo.java         # Info
 ├── infrastructure                  # 인프라 계층
 │   ├── member
 │   │   ├── MemberRepositoryImpl.java
@@ -423,3 +464,85 @@ com.loopers
 - ❌ 순환 참조
 - ❌ 도메인 로직 누수 (Controller에 비즈니스 로직)
 - ❌ God Service (하나의 Service에 모든 로직)
+
+---
+
+## Application Layer 규칙 (확정 결정)
+
+### 어노테이션
+- App: **`@Component`** 사용 (절대 `@Service` 사용 금지)
+- Facade: **`@Component`** 사용 (절대 `@Service` 사용 금지)
+- Service: **`@Service`** 사용
+
+### App 의존성 규칙
+```
+✅ App → Service (허용)
+❌ App → Repository 직접 의존 (금지)
+❌ App → App 의존 (금지)
+❌ App → Facade 의존 (금지)
+```
+
+### Facade 사용 조건 및 의존성 규칙
+```
+✅ Facade → App (허용, 반드시 2개 이상의 App 사용 시에만 Facade 생성)
+❌ Facade → Service 직접 호출 (금지 — 반드시 App 경유)
+❌ Facade → Repository 직접 의존 (금지)
+❌ Facade → Facade 의존 (금지)
+❌ 단일 App만 사용하는 Facade 생성 (금지 — App을 직접 사용할 것)
+```
+
+### 크로스 도메인 오케스트레이션은 Facade 책임 (App 경유)
+```java
+// ✅ 올바른 예: BrandFacade에서 cascade delete 처리 (App 경유)
+@Transactional
+public void deleteBrand(String brandId) {
+    brandApp.deleteBrand(brandId);                    // BrandService 호출
+    productApp.deleteProductsByBrandRefId(brandId);   // ProductService 호출
+}
+
+// ❌ 잘못된 예: Facade에서 Service 직접 호출
+@Transactional
+public void deleteBrand(String brandId) {
+    brandService.deleteBrand(brandId);       // 금지: Facade → Service 직접 호출
+    productService.deleteProductsByBrandRefId(brand.getId());  // 금지
+}
+```
+
+도메인 간 연쇄 처리(cascade)가 필요하면 Service에 두지 말고 Facade에서 App을 통해 조율할 것.
+
+---
+
+## 도메인 간 의존성 규칙 (확정 결정)
+
+### Model과 Repository 인터페이스: 자기 도메인 VO만 사용
+```java
+// ✅ OrderModel은 order.vo만 import
+import com.loopers.domain.order.vo.OrderId;
+import com.loopers.domain.order.vo.RefMemberId;  // order 도메인 소유
+
+// ❌ OrderModel이 like.vo를 import하는 것은 금지
+import com.loopers.domain.like.vo.RefMemberId;
+```
+
+### Service: 타 도메인 Repository 호출 시 해당 도메인 VO import 허용
+```java
+// ✅ LikeService가 ProductRepository를 호출하기 위해 ProductId VO import
+import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.product.vo.ProductId;  // 관계가 있으므로 허용
+
+// ✅ ProductService가 BrandRepository를 호출하기 위해 BrandId VO import
+import com.loopers.domain.brand.BrandRepository;
+import com.loopers.domain.brand.vo.BrandId;  // 관계가 있으므로 허용
+```
+
+Service 계층에서 타 도메인 Repository를 직접 사용하는 것은 **트랜잭션 원자성 보장** 목적으로 허용됨.
+단, 이는 의도적 설계 결정이며, 단순 조회 위임이라면 타 도메인 Service를 통하는 것을 검토할 것.
+
+### 참조 VO (RefOOOId) 소유권
+- `RefMemberId`, `RefProductId` 등 타 도메인의 PK를 참조하는 VO는 **사용하는 도메인이 자기 vo 패키지에 별도 정의**
+- 예: `order.vo.RefMemberId`, `like.vo.RefMemberId` — 같은 이름이어도 별개의 독립 VO
+- 한 도메인의 VO를 다른 도메인 Model/Repository가 import하는 것은 도메인 경계 위반
+
+### Converter 소유권
+- 각 도메인의 VO에 대응하는 Converter는 해당 도메인의 VO를 사용하는 Entity 맥락에 맞게 별도 정의
+- 예: `RefMemberIdConverter` (like.vo용), `OrderRefMemberIdConverter` (order.vo용)

@@ -67,6 +67,7 @@ subprojects {
         testImplementation("org.springframework.boot:spring-boot-testcontainers")
         testImplementation("org.testcontainers:testcontainers")
         testImplementation("org.testcontainers:junit-jupiter")
+        testImplementation("com.tngtech.archunit:archunit-junit5:${project.properties["archunitVersion"]}")
     }
 
     tasks.withType(Jar::class) { enabled = true }

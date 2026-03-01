@@ -1,5 +1,6 @@
 package com.loopers.interfaces.api.member;
 
+import com.loopers.application.member.MemberInfo;
 import com.loopers.domain.member.Gender;
 import com.loopers.domain.member.MemberModel;
 import jakarta.validation.constraints.NotBlank;
@@ -34,6 +35,17 @@ public class MemberV1Dto {
                 member.getGender()
             );
         }
+
+        public static MemberResponse fromInfo(MemberInfo info) {
+            return new MemberResponse(
+                info.id(),
+                info.memberId(),
+                info.email(),
+                info.birthDate(),
+                info.name(),
+                Gender.valueOf(info.gender())
+            );
+        }
     }
 
     public record ChangePasswordRequest(
@@ -53,6 +65,15 @@ public class MemberV1Dto {
                 maskName(member.getName().value()),
                 member.getBirthDate().asString(),
                 member.getEmail().address()
+            );
+        }
+
+        public static MeResponse fromInfo(MemberInfo info) {
+            return new MeResponse(
+                info.memberId(),
+                maskName(info.name()),
+                info.birthDate(),
+                info.email()
             );
         }
 

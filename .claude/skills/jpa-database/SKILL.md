@@ -452,6 +452,66 @@ class MemberServiceIntegrationTest {
 
 ---
 
+## @Query 패턴 (확정 결정)
+
+### EntityManager 직접 사용 금지
+프로덕션 코드에서 `EntityManager`를 직접 사용하는 것은 금지. 반드시 JpaRepository의 `@Query`로 대체.
+
+```java
+// ❌ 금지: EntityManager 직접 사용
+@Autowired
+private EntityManager entityManager;
+
+public Page<ProductModel> findProducts(...) {
+    Query query = entityManager.createNativeQuery("SELECT ...", ProductModel.class);
+    // ...
+}
+
+// ✅ 올바름: JpaRepository에 @Query 정의
+public interface ProductJpaRepository extends JpaRepository<ProductModel, Long> {
+    @Query(value = "SELECT * FROM products WHERE ...", nativeQuery = true)
+    Page<ProductModel> findActiveProducts(...);
+}
+```
+
+### 페이징 네이티브 쿼리: countQuery 필수
+```java
+// ✅ 페이징 native query는 반드시 countQuery 명시
+@Query(
+    value = "SELECT p.* FROM products p LEFT JOIN likes l ON p.id = l.ref_product_id " +
+            "WHERE p.deleted_at IS NULL GROUP BY p.id ORDER BY COUNT(l.id) DESC",
+    countQuery = "SELECT COUNT(*) FROM products p WHERE p.deleted_at IS NULL",
+    nativeQuery = true
+)
+Page<ProductModel> findActiveSortByLikesDesc(Pageable pageable);
+```
+
+### 조건부 UPDATE: @Modifying + @Query
+```java
+// ✅ 재고 차감처럼 조건부 UPDATE는 @Modifying 사용
+@Modifying
+@Query(value = "UPDATE products SET stock_quantity = stock_quantity - :quantity " +
+               "WHERE id = :productId AND stock_quantity >= :quantity", nativeQuery = true)
+int decreaseStockIfAvailable(@Param("productId") Long productId, @Param("quantity") int quantity);
+```
+
+### nullable 파라미터 조건 필터링: JPQL 활용
+```java
+// ✅ null 가능한 파라미터는 JPQL의 조건부 표현식으로 처리
+@Query("SELECT o FROM OrderModel o WHERE o.refMemberId = :refMemberId " +
+       "AND (:startDateTime IS NULL OR o.createdAt >= :startDateTime) " +
+       "AND (:endDateTime IS NULL OR o.createdAt <= :endDateTime) " +
+       "ORDER BY o.createdAt DESC")
+Page<OrderModel> findByRefMemberIdWithDateFilter(
+    @Param("refMemberId") RefMemberId refMemberId,
+    @Param("startDateTime") LocalDateTime startDateTime,
+    @Param("endDateTime") LocalDateTime endDateTime,
+    Pageable pageable
+);
+```
+
+---
+
 ## 주의사항
 
 ### Entity 설계
@@ -462,6 +522,7 @@ class MemberServiceIntegrationTest {
 
 ### Repository 설계
 - ❌ **Service에서 JpaRepository 직접 사용 금지**: RepositoryImpl 경유
+- ❌ **EntityManager 직접 사용 금지**: `@Query` 어노테이션으로 대체
 - ✅ **Domain Repository 인터페이스**: 도메인 용어 사용
 - ✅ **쿼리 메서드 활용**: 간단한 조회는 메서드명으로
 

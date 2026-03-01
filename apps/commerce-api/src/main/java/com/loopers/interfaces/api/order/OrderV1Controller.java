@@ -1,0 +1,77 @@
+package com.loopers.interfaces.api.order;
+
+import com.loopers.application.order.OrderApp;
+import com.loopers.application.order.OrderInfo;
+import com.loopers.application.order.OrderItemCommand;
+import com.loopers.interfaces.api.ApiResponse;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/v1/orders")
+@RequiredArgsConstructor
+public class OrderV1Controller implements OrderV1ApiSpec {
+
+    private final OrderApp orderApp;
+
+    @PostMapping
+    @Override
+    public ResponseEntity<ApiResponse<OrderV1Dto.OrderResponse>> createOrder(
+            @Valid @RequestBody OrderV1Dto.CreateOrderRequest request
+    ) {
+        List<OrderItemCommand> items = request.items().stream()
+                .map(OrderV1Dto.OrderItemRequest::toCommand)
+                .toList();
+
+        OrderInfo info = orderApp.createOrder(request.memberId(), items);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(OrderV1Dto.OrderResponse.from(info)));
+    }
+
+    @GetMapping
+    @Override
+    public ResponseEntity<ApiResponse<OrderV1Dto.OrderListResponse>> getOrders(
+            @RequestParam Long memberId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            Pageable pageable
+    ) {
+        Page<OrderInfo> orders = orderApp.getMyOrders(
+                memberId,
+                startDate != null ? startDate.atStartOfDay() : null,
+                endDate != null ? endDate.plusDays(1).atStartOfDay() : null,
+                pageable
+        );
+        return ResponseEntity.ok(ApiResponse.success(OrderV1Dto.OrderListResponse.from(orders)));
+    }
+
+    @GetMapping("/{orderId}")
+    @Override
+    public ResponseEntity<ApiResponse<OrderV1Dto.OrderResponse>> getOrder(
+            @PathVariable String orderId,
+            @RequestParam Long memberId
+    ) {
+        OrderInfo info = orderApp.getMyOrder(memberId, orderId);
+        return ResponseEntity.ok(ApiResponse.success(OrderV1Dto.OrderResponse.from(info)));
+    }
+
+    @PatchMapping("/{orderId}/cancel")
+    @Override
+    public ResponseEntity<ApiResponse<OrderV1Dto.OrderResponse>> cancelOrder(
+            @PathVariable String orderId,
+            @Valid @RequestBody OrderV1Dto.CancelOrderRequest request
+    ) {
+        OrderInfo info = orderApp.cancelOrder(request.memberId(), orderId);
+        return ResponseEntity.ok(ApiResponse.success(OrderV1Dto.OrderResponse.from(info)));
+    }
+}
