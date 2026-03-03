@@ -1,0 +1,58 @@
+version: '3.9'
+
+# 격리레벨 동시성 실험용 DB 컨테이너
+# 실험 파일: apps/commerce-api/src/test/java/com/loopers/experiment/IsolationLevelExperimentTest.java
+#
+# 실행: docker compose up -d
+# 종료: docker compose down
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: experiment-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: experiment
+      MYSQL_USER: experiment
+      MYSQL_PASSWORD: experiment
+    ports:
+      - "3307:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-lock-wait-timeout=50     # 기본값(50s), 실험 코드에서 세션별로 3s 로 재설정
+      - --transaction-isolation=READ-COMMITTED  # 기본 격리레벨; 실험 코드에서 세션별로 재설정
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  postgres:
+    image: postgres:16
+    container_name: experiment-postgres
+    environment:
+      POSTGRES_DB: experiment
+      POSTGRES_USER: experiment
+      POSTGRES_PASSWORD: experiment
+    ports:
+      - "5433:5432"
+    command:
+      - postgres
+      - -c
+      - lock_timeout=50s               # 기본값; 실험 코드에서 세션별로 3s 로 재설정
+      - -c
+      - default_transaction_isolation=read committed
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U experiment -d experiment" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  mysql-data:
+  postgres-data:

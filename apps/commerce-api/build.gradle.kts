@@ -20,4 +20,11 @@ dependencies {
     // test-fixtures
     testImplementation(testFixtures(project(":modules:jpa")))
     testImplementation(testFixtures(project(":modules:redis")))
+
+    // experiment: isolation level concurrency test (IsolationLevelExperimentTest)
+    testImplementation("org.testcontainers:mysql")
+    testImplementation("org.testcontainers:postgresql")
+    testRuntimeOnly("org.postgresql:postgresql")
+    testImplementation("com.h2database:h2")
+    testAnnotationProcessor("org.projectlombok:lombok")
 }
