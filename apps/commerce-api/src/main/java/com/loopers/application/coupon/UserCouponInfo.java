@@ -6,7 +6,6 @@ import java.time.ZonedDateTime;
 
 public record UserCouponInfo(
         Long id,
-        String userCouponId,
         Long refMemberId,
         Long refCouponTemplateId,
         String status,
@@ -21,7 +20,6 @@ public record UserCouponInfo(
         }
         return new UserCouponInfo(
                 model.getId(),
-                model.getUserCouponId().value(),
                 model.getRefMemberId(),
                 model.getRefCouponTemplateId(),
                 resolvedStatus,

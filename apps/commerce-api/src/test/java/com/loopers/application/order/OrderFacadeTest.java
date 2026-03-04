@@ -16,8 +16,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -59,11 +57,11 @@ class OrderFacadeTest {
         void createOrder_withCoupon_appliesDiscount() {
             // given
             Long memberId = 1L;
-            String userCouponId = "00000000-0000-0000-0000-000000000001";
+            Long userCouponId = 42L;
             List<OrderItemCommand> items = List.of(new OrderItemCommand("prod1", 2));
             BigDecimal originalAmount = BigDecimal.valueOf(20000);
             BigDecimal discountAmount = BigDecimal.valueOf(2000);
-            Long userCouponPkId = 10L;
+            Long userCouponPkId = 42L;
 
             when(orderApp.calculateOriginalAmount(items)).thenReturn(originalAmount);
             when(couponApp.calculateDiscount(userCouponId, memberId, originalAmount)).thenReturn(discountAmount);
@@ -87,7 +85,7 @@ class OrderFacadeTest {
         void createOrder_expiredCoupon_throws() {
             // given
             Long memberId = 1L;
-            String userCouponId = "00000000-0000-0000-0000-000000000001";
+            Long userCouponId = 42L;
             List<OrderItemCommand> items = List.of(new OrderItemCommand("prod1", 2));
             BigDecimal originalAmount = BigDecimal.valueOf(20000);
 
@@ -129,7 +127,7 @@ class OrderFacadeTest {
             // given
             Long memberId = 1L;
             String orderId = "00000000-0000-0000-0000-000000000002";
-            Long userCouponPkId = 10L;
+            Long userCouponPkId = 42L;
             OrderInfo orderInfo = createOrderInfo(BigDecimal.valueOf(2000), userCouponPkId);
             when(orderApp.cancelOrder(memberId, orderId)).thenReturn(orderInfo);
 

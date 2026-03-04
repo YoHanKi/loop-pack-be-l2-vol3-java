@@ -58,7 +58,6 @@ class CouponAdminV1ControllerE2ETest {
                     "name", "신규회원 할인쿠폰",
                     "type", "FIXED",
                     "value", 5000,
-                    "totalQuantity", 100,
                     "expiredAt", ZonedDateTime.now().plusDays(30).toString()
             );
 
@@ -77,7 +76,7 @@ class CouponAdminV1ControllerE2ETest {
             // given
             Map<String, Object> body = Map.of(
                     "name", "테스트", "type", "FIXED", "value", 1000,
-                    "totalQuantity", 10, "expiredAt", ZonedDateTime.now().plusDays(1).toString());
+                    "expiredAt", ZonedDateTime.now().plusDays(1).toString());
 
             // when
             ResponseEntity<ApiResponse> response = restTemplate.exchange(
@@ -101,7 +100,7 @@ class CouponAdminV1ControllerE2ETest {
 
             // when
             ResponseEntity<ApiResponse> response = restTemplate.exchange(
-                    ADMIN_URL + "/" + template.getCouponTemplateId().value(),
+                    ADMIN_URL + "/" + template.getId(),
                     HttpMethod.GET, new HttpEntity<>(headers), ApiResponse.class);
 
             // then
@@ -116,7 +115,7 @@ class CouponAdminV1ControllerE2ETest {
 
             // when
             ResponseEntity<ApiResponse> response = restTemplate.exchange(
-                    ADMIN_URL + "/00000000-0000-0000-0000-000000000099",
+                    ADMIN_URL + "/999999",
                     HttpMethod.GET, new HttpEntity<>(headers), ApiResponse.class);
 
             // then
@@ -137,13 +136,12 @@ class CouponAdminV1ControllerE2ETest {
             Map<String, Object> body = Map.of(
                     "name", "수정된쿠폰",
                     "value", 2000,
-                    "totalQuantity", 50,
                     "expiredAt", ZonedDateTime.now().plusDays(14).toString()
             );
 
             // when
             ResponseEntity<ApiResponse> response = restTemplate.exchange(
-                    ADMIN_URL + "/" + template.getCouponTemplateId().value(),
+                    ADMIN_URL + "/" + template.getId(),
                     HttpMethod.PUT, new HttpEntity<>(body, headers), ApiResponse.class);
 
             // then
@@ -164,7 +162,7 @@ class CouponAdminV1ControllerE2ETest {
 
             // when
             ResponseEntity<Void> response = restTemplate.exchange(
-                    ADMIN_URL + "/" + template.getCouponTemplateId().value(),
+                    ADMIN_URL + "/" + template.getId(),
                     HttpMethod.DELETE, new HttpEntity<>(headers), Void.class);
 
             // then
@@ -185,7 +183,7 @@ class CouponAdminV1ControllerE2ETest {
 
             // when
             ResponseEntity<ApiResponse> response = restTemplate.exchange(
-                    ADMIN_URL + "/" + template.getCouponTemplateId().value() + "/issues",
+                    ADMIN_URL + "/" + template.getId() + "/issues",
                     HttpMethod.GET, new HttpEntity<>(headers), ApiResponse.class);
 
             // then
@@ -196,7 +194,7 @@ class CouponAdminV1ControllerE2ETest {
     private CouponTemplateModel createAndSaveTemplate(String name) {
         CouponTemplateModel template = CouponTemplateModel.create(
                 name, CouponType.FIXED, BigDecimal.valueOf(1000), null,
-                ZonedDateTime.now().plusDays(7), 10
+                ZonedDateTime.now().plusDays(7)
         );
         return couponTemplateRepository.save(template);
     }

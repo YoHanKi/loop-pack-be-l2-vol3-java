@@ -1,8 +1,6 @@
 package com.loopers.domain.coupon;
 
 import com.loopers.domain.BaseEntity;
-import com.loopers.domain.coupon.vo.UserCouponId;
-import com.loopers.infrastructure.coupon.UserCouponIdConverter;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -14,7 +12,6 @@ import java.time.ZonedDateTime;
 @Table(
         name = "user_coupons",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_user_coupon_id", columnNames = {"user_coupon_id"}),
                 @UniqueConstraint(name = "uk_user_coupon_member_template",
                         columnNames = {"ref_member_id", "ref_coupon_template_id"})
         }
@@ -22,10 +19,6 @@ import java.time.ZonedDateTime;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserCouponModel extends BaseEntity {
-
-    @Convert(converter = UserCouponIdConverter.class)
-    @Column(name = "user_coupon_id", nullable = false, length = 36)
-    private UserCouponId userCouponId;
 
     @Column(name = "ref_member_id", nullable = false)
     private Long refMemberId;
@@ -42,7 +35,6 @@ public class UserCouponModel extends BaseEntity {
     private int version;
 
     private UserCouponModel(Long refMemberId, Long refCouponTemplateId) {
-        this.userCouponId = UserCouponId.generate();
         this.refMemberId = refMemberId;
         this.refCouponTemplateId = refCouponTemplateId;
         this.status = UserCouponStatus.AVAILABLE;

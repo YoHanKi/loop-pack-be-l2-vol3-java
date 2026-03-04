@@ -1,10 +1,9 @@
 package com.loopers.domain.coupon;
 
-import com.loopers.domain.coupon.vo.CouponTemplateId;
-import com.loopers.domain.coupon.vo.UserCouponId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -19,31 +18,26 @@ public class CouponService {
     private final UserCouponRepository userCouponRepository;
 
     public CouponTemplateModel createTemplate(String name, CouponType type, BigDecimal value,
-                                              BigDecimal minOrderAmount, ZonedDateTime expiredAt,
-                                              int totalQuantity) {
-        CouponTemplateModel template = CouponTemplateModel.create(name, type, value, minOrderAmount, expiredAt, totalQuantity);
+                                              BigDecimal minOrderAmount, ZonedDateTime expiredAt) {
+        CouponTemplateModel template = CouponTemplateModel.create(name, type, value, minOrderAmount, expiredAt);
         return couponTemplateRepository.save(template);
     }
 
-    public CouponTemplateModel updateTemplate(String couponTemplateIdValue, String name, BigDecimal value,
-                                              BigDecimal minOrderAmount, ZonedDateTime expiredAt,
-                                              int totalQuantity) {
-        CouponTemplateModel template = findActiveTemplate(couponTemplateIdValue);
-        template.update(name, value, minOrderAmount, expiredAt, totalQuantity);
+    public CouponTemplateModel updateTemplate(Long couponTemplateId, String name, BigDecimal value,
+                                              BigDecimal minOrderAmount, ZonedDateTime expiredAt) {
+        CouponTemplateModel template = findActiveTemplate(couponTemplateId);
+        template.update(name, value, minOrderAmount, expiredAt);
         return couponTemplateRepository.save(template);
     }
 
-    public void deleteTemplate(String couponTemplateIdValue) {
-        CouponTemplateModel template = findActiveTemplate(couponTemplateIdValue);
+    public void deleteTemplate(Long couponTemplateId) {
+        CouponTemplateModel template = findActiveTemplate(couponTemplateId);
         template.markAsDeleted();
         couponTemplateRepository.save(template);
     }
 
-    public UserCouponModel issueUserCoupon(String couponTemplateIdValue, Long memberId) {
-        CouponTemplateId couponTemplateId = new CouponTemplateId(couponTemplateIdValue);
-
-        // 비관적 락으로 템플릿 조회
-        CouponTemplateModel template = couponTemplateRepository.findByCouponTemplateIdForUpdate(couponTemplateId)
+    public UserCouponModel issueUserCoupon(Long couponTemplateId, Long memberId) {
+        CouponTemplateModel template = couponTemplateRepository.findById(couponTemplateId)
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿이 존재하지 않습니다."));
 
         if (template.isDeleted()) {
@@ -54,26 +48,22 @@ public class CouponService {
             throw new CoreException(ErrorType.BAD_REQUEST, "만료된 쿠폰입니다.");
         }
 
-        if (template.getIssuedQuantity() >= template.getTotalQuantity()) {
-            throw new CoreException(ErrorType.CONFLICT, "쿠폰이 모두 소진되었습니다.");
-        }
-
         boolean alreadyIssued = userCouponRepository.existsByRefMemberIdAndRefCouponTemplateId(
                 memberId, template.getId());
         if (alreadyIssued) {
             throw new CoreException(ErrorType.CONFLICT, "이미 발급받은 쿠폰입니다.");
         }
 
-        template.incrementIssuedQuantity();
-        couponTemplateRepository.save(template);
-
-        UserCouponModel userCoupon = UserCouponModel.create(memberId, template.getId());
-        return userCouponRepository.save(userCoupon);
+        try {
+            UserCouponModel userCoupon = UserCouponModel.create(memberId, template.getId());
+            return userCouponRepository.save(userCoupon);
+        } catch (DataIntegrityViolationException e) {
+            throw new CoreException(ErrorType.CONFLICT, "이미 발급받은 쿠폰입니다.");
+        }
     }
 
-    public BigDecimal calculateDiscount(String userCouponIdValue, Long memberId, BigDecimal originalAmount) {
-        UserCouponId userCouponId = new UserCouponId(userCouponIdValue);
-        UserCouponModel userCoupon = userCouponRepository.findByUserCouponId(userCouponId)
+    public BigDecimal calculateDiscount(Long userCouponId, Long memberId, BigDecimal originalAmount) {
+        UserCouponModel userCoupon = userCouponRepository.findById(userCouponId)
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "사용자 쿠폰이 존재하지 않습니다."));
 
         if (!userCoupon.getRefMemberId().equals(memberId)) {
@@ -84,7 +74,7 @@ public class CouponService {
             throw new CoreException(ErrorType.CONFLICT, "사용 가능한 쿠폰이 아닙니다.");
         }
 
-        CouponTemplateModel template = couponTemplateRepository.findByPkId(userCoupon.getRefCouponTemplateId())
+        CouponTemplateModel template = couponTemplateRepository.findById(userCoupon.getRefCouponTemplateId())
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿이 존재하지 않습니다."));
 
         if (userCoupon.isExpired(template.getExpiredAt())) {
@@ -106,26 +96,20 @@ public class CouponService {
         }
     }
 
-    public Long useUserCoupon(String userCouponIdValue) {
-        UserCouponId userCouponId = new UserCouponId(userCouponIdValue);
-        UserCouponModel userCoupon = userCouponRepository.findByUserCouponId(userCouponId)
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "사용자 쿠폰이 존재하지 않습니다."));
-
-        int rowsAffected = userCouponRepository.useIfAvailable(userCoupon.getId());
+    public Long useUserCoupon(Long userCouponId) {
+        int rowsAffected = userCouponRepository.useIfAvailable(userCouponId);
         if (rowsAffected == 0) {
             throw new CoreException(ErrorType.CONFLICT, "쿠폰이 이미 사용되었거나 사용할 수 없는 상태입니다.");
         }
-        return userCoupon.getId();
+        return userCouponId;
     }
 
     public void restoreUserCouponByPkId(Long pkId) {
-        // idempotent: rowsAffected == 0이면 이미 복원된 상태이므로 무시
         userCouponRepository.restoreIfUsed(pkId);
     }
 
-    public CouponTemplateModel findActiveTemplate(String couponTemplateIdValue) {
-        CouponTemplateId couponTemplateId = new CouponTemplateId(couponTemplateIdValue);
-        CouponTemplateModel template = couponTemplateRepository.findByCouponTemplateId(couponTemplateId)
+    public CouponTemplateModel findActiveTemplate(Long couponTemplateId) {
+        CouponTemplateModel template = couponTemplateRepository.findById(couponTemplateId)
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿이 존재하지 않습니다."));
         if (template.isDeleted()) {
             throw new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿이 존재하지 않습니다.");

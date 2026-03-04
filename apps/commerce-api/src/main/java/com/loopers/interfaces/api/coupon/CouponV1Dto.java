@@ -14,7 +14,6 @@ public class CouponV1Dto {
 
     public record UserCouponResponse(
             Long id,
-            String userCouponId,
             Long refMemberId,
             Long refCouponTemplateId,
             String status,
@@ -23,7 +22,6 @@ public class CouponV1Dto {
         public static UserCouponResponse from(UserCouponInfo info) {
             return new UserCouponResponse(
                     info.id(),
-                    info.userCouponId(),
                     info.refMemberId(),
                     info.refCouponTemplateId(),
                     info.status(),

@@ -1,7 +1,6 @@
 package com.loopers.domain.coupon;
 
 import com.loopers.application.coupon.CouponApp;
-import com.loopers.domain.coupon.vo.UserCouponId;
 import com.loopers.support.error.CoreException;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
@@ -44,15 +43,13 @@ class CouponUseConcurrencyTest {
     @DisplayName("1개 UserCoupon을 10개 스레드가 동시 사용 시도 → 정확히 1개만 성공")
     void useUserCoupon_concurrency_onlyOneSucceeds() throws InterruptedException {
         // given
-        CouponTemplateModel template = CouponTemplateModel.create(
+        CouponTemplateModel savedTemplate = couponTemplateRepository.save(CouponTemplateModel.create(
                 "사용동시성쿠폰", CouponType.FIXED, BigDecimal.valueOf(1000), null,
-                ZonedDateTime.now().plusDays(7), 100
-        );
-        couponTemplateRepository.save(template);
+                ZonedDateTime.now().plusDays(7)
+        ));
 
-        UserCouponModel userCoupon = UserCouponModel.create(1L, template.getId());
-        userCouponRepository.save(userCoupon);
-        String userCouponIdValue = userCoupon.getUserCouponId().value();
+        UserCouponModel savedCoupon = userCouponRepository.save(UserCouponModel.create(1L, savedTemplate.getId()));
+        Long userCouponId = savedCoupon.getId();
 
         int concurrentThreads = 10;
         AtomicInteger successCount = new AtomicInteger(0);
@@ -64,7 +61,7 @@ class CouponUseConcurrencyTest {
         for (int i = 0; i < concurrentThreads; i++) {
             executor.submit(() -> {
                 try {
-                    couponApp.useUserCoupon(userCouponIdValue);
+                    couponApp.useUserCoupon(userCouponId);
                     successCount.incrementAndGet();
                 } catch (CoreException e) {
                     conflictCount.incrementAndGet();
@@ -81,8 +78,7 @@ class CouponUseConcurrencyTest {
         assertThat(successCount.get()).isEqualTo(1);
         assertThat(conflictCount.get()).isEqualTo(concurrentThreads - 1);
 
-        UserCouponModel updated = userCouponRepository.findByUserCouponId(
-                new UserCouponId(userCouponIdValue)).orElseThrow();
+        UserCouponModel updated = userCouponRepository.findById(userCouponId).orElseThrow();
         assertThat(updated.getStatus()).isEqualTo(UserCouponStatus.USED);
     }
 }

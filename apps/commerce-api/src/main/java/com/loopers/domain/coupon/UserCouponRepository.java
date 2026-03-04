@@ -1,7 +1,5 @@
 package com.loopers.domain.coupon;
 
-import com.loopers.domain.coupon.vo.UserCouponId;
-
 import java.util.List;
 import java.util.Optional;
 
@@ -9,7 +7,7 @@ public interface UserCouponRepository {
 
     UserCouponModel save(UserCouponModel model);
 
-    Optional<UserCouponModel> findByUserCouponId(UserCouponId id);
+    Optional<UserCouponModel> findById(Long id);
 
     List<UserCouponModel> findByRefMemberId(Long memberId);
 

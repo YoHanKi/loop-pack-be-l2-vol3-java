@@ -24,7 +24,7 @@ public class OrderV1Dto {
             @Valid
             List<OrderItemRequest> items,
 
-            String userCouponId
+            Long userCouponId
     ) {}
 
     public record OrderItemRequest(

@@ -22,7 +22,7 @@ public interface CouponAdminV1ApiSpec {
     @Operation(summary = "쿠폰 템플릿 상세 조회")
     ResponseEntity<ApiResponse<CouponAdminV1Dto.TemplateResponse>> getTemplate(
             @RequestHeader(value = "X-Loopers-Ldap", required = false) String ldapHeader,
-            @PathVariable String couponId
+            @PathVariable Long couponId
     );
 
     @Operation(summary = "쿠폰 템플릿 생성")
@@ -34,19 +34,19 @@ public interface CouponAdminV1ApiSpec {
     @Operation(summary = "쿠폰 템플릿 수정")
     ResponseEntity<ApiResponse<CouponAdminV1Dto.TemplateResponse>> updateTemplate(
             @RequestHeader(value = "X-Loopers-Ldap", required = false) String ldapHeader,
-            @PathVariable String couponId,
+            @PathVariable Long couponId,
             @RequestBody CouponAdminV1Dto.UpdateTemplateRequest request
     );
 
     @Operation(summary = "쿠폰 템플릿 삭제")
     ResponseEntity<ApiResponse<Void>> deleteTemplate(
             @RequestHeader(value = "X-Loopers-Ldap", required = false) String ldapHeader,
-            @PathVariable String couponId
+            @PathVariable Long couponId
     );
 
     @Operation(summary = "쿠폰 발급 내역 조회")
     ResponseEntity<ApiResponse<CouponAdminV1Dto.IssueListResponse>> getIssuedCoupons(
             @RequestHeader(value = "X-Loopers-Ldap", required = false) String ldapHeader,
-            @PathVariable String couponId
+            @PathVariable Long couponId
     );
 }

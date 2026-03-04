@@ -1,18 +1,14 @@
 package com.loopers.infrastructure.coupon;
 
 import com.loopers.domain.coupon.UserCouponModel;
-import com.loopers.domain.coupon.vo.UserCouponId;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface UserCouponJpaRepository extends JpaRepository<UserCouponModel, Long> {
-
-    Optional<UserCouponModel> findByUserCouponId(UserCouponId id);
 
     List<UserCouponModel> findByRefMemberId(Long memberId);
 

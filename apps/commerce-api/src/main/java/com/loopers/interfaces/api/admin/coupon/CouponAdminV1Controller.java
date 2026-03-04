@@ -40,7 +40,7 @@ public class CouponAdminV1Controller implements CouponAdminV1ApiSpec {
     @Override
     public ResponseEntity<ApiResponse<CouponAdminV1Dto.TemplateResponse>> getTemplate(
             @RequestHeader(value = "X-Loopers-Ldap", required = false) String ldapHeader,
-            @PathVariable String couponId
+            @PathVariable Long couponId
     ) {
         validateAdmin(ldapHeader);
         CouponTemplateInfo template = couponApp.getTemplate(couponId);
@@ -56,7 +56,7 @@ public class CouponAdminV1Controller implements CouponAdminV1ApiSpec {
         validateAdmin(ldapHeader);
         CouponTemplateInfo template = couponApp.createTemplate(
                 request.name(), request.type(), request.value(),
-                request.minOrderAmount(), request.expiredAt(), request.totalQuantity()
+                request.minOrderAmount(), request.expiredAt()
         );
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(CouponAdminV1Dto.TemplateResponse.from(template)));
@@ -66,13 +66,13 @@ public class CouponAdminV1Controller implements CouponAdminV1ApiSpec {
     @Override
     public ResponseEntity<ApiResponse<CouponAdminV1Dto.TemplateResponse>> updateTemplate(
             @RequestHeader(value = "X-Loopers-Ldap", required = false) String ldapHeader,
-            @PathVariable String couponId,
+            @PathVariable Long couponId,
             @Valid @RequestBody CouponAdminV1Dto.UpdateTemplateRequest request
     ) {
         validateAdmin(ldapHeader);
         CouponTemplateInfo template = couponApp.updateTemplate(
                 couponId, request.name(), request.value(),
-                request.minOrderAmount(), request.expiredAt(), request.totalQuantity()
+                request.minOrderAmount(), request.expiredAt()
         );
         return ResponseEntity.ok(ApiResponse.success(CouponAdminV1Dto.TemplateResponse.from(template)));
     }
@@ -81,7 +81,7 @@ public class CouponAdminV1Controller implements CouponAdminV1ApiSpec {
     @Override
     public ResponseEntity<ApiResponse<Void>> deleteTemplate(
             @RequestHeader(value = "X-Loopers-Ldap", required = false) String ldapHeader,
-            @PathVariable String couponId
+            @PathVariable Long couponId
     ) {
         validateAdmin(ldapHeader);
         couponApp.deleteTemplate(couponId);
@@ -92,7 +92,7 @@ public class CouponAdminV1Controller implements CouponAdminV1ApiSpec {
     @Override
     public ResponseEntity<ApiResponse<CouponAdminV1Dto.IssueListResponse>> getIssuedCoupons(
             @RequestHeader(value = "X-Loopers-Ldap", required = false) String ldapHeader,
-            @PathVariable String couponId
+            @PathVariable Long couponId
     ) {
         validateAdmin(ldapHeader);
         List<UserCouponInfo> userCoupons = couponApp.getIssuedCoupons(couponId);

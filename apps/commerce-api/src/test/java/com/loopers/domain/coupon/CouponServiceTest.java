@@ -1,7 +1,5 @@
 package com.loopers.domain.coupon;
 
-import com.loopers.domain.coupon.vo.CouponTemplateId;
-import com.loopers.domain.coupon.vo.UserCouponId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import org.junit.jupiter.api.DisplayName;
@@ -43,19 +41,18 @@ class CouponServiceTest {
         void issueUserCoupon_success() {
             // given
             Long memberId = 1L;
-            CouponTemplateModel template = createActiveTemplate(10);
-            when(couponTemplateRepository.findByCouponTemplateIdForUpdate(any())).thenReturn(Optional.of(template));
+            Long couponTemplateId = 42L;
+            CouponTemplateModel template = createActiveTemplate();
+            when(couponTemplateRepository.findById(couponTemplateId)).thenReturn(Optional.of(template));
             when(userCouponRepository.existsByRefMemberIdAndRefCouponTemplateId(any(), any())).thenReturn(false);
-            when(couponTemplateRepository.save(any())).thenReturn(template);
             UserCouponModel savedCoupon = mock(UserCouponModel.class);
             when(userCouponRepository.save(any())).thenReturn(savedCoupon);
 
             // when
-            UserCouponModel result = couponService.issueUserCoupon(template.getCouponTemplateId().value(), memberId);
+            UserCouponModel result = couponService.issueUserCoupon(couponTemplateId, memberId);
 
             // then
             assertThat(result).isEqualTo(savedCoupon);
-            verify(couponTemplateRepository).save(template);
             verify(userCouponRepository).save(any(UserCouponModel.class));
         }
 
@@ -64,39 +61,19 @@ class CouponServiceTest {
         void issueUserCoupon_expired_throws400() {
             // given
             Long memberId = 1L;
+            Long couponTemplateId = 42L;
             CouponTemplateModel expiredTemplate = CouponTemplateModel.create(
                     "만료쿠폰", CouponType.FIXED, BigDecimal.valueOf(1000), null,
-                    ZonedDateTime.now().plusSeconds(1), 10
+                    ZonedDateTime.now().plusSeconds(1)
             );
-            // 만료 상태 시뮬레이션을 위해 spy 사용
             CouponTemplateModel spy = spy(expiredTemplate);
             when(spy.isExpired()).thenReturn(true);
-            when(couponTemplateRepository.findByCouponTemplateIdForUpdate(any())).thenReturn(Optional.of(spy));
+            when(couponTemplateRepository.findById(couponTemplateId)).thenReturn(Optional.of(spy));
 
             // when & then
-            assertThatThrownBy(() -> couponService.issueUserCoupon(
-                    expiredTemplate.getCouponTemplateId().value(), memberId))
+            assertThatThrownBy(() -> couponService.issueUserCoupon(couponTemplateId, memberId))
                     .isInstanceOf(CoreException.class)
                     .hasFieldOrPropertyWithValue("errorType", ErrorType.BAD_REQUEST);
-        }
-
-        @Test
-        @DisplayName("수량 초과 - 409 Conflict")
-        void issueUserCoupon_quantityExceeded_throws409() {
-            // given
-            Long memberId = 1L;
-            CouponTemplateModel template = mock(CouponTemplateModel.class);
-            when(template.isDeleted()).thenReturn(false);
-            when(template.isExpired()).thenReturn(false);
-            when(template.getIssuedQuantity()).thenReturn(10);
-            when(template.getTotalQuantity()).thenReturn(10);
-            when(couponTemplateRepository.findByCouponTemplateIdForUpdate(any())).thenReturn(Optional.of(template));
-
-            // when & then
-            assertThatThrownBy(() -> couponService.issueUserCoupon(
-                    "00000000-0000-0000-0000-000000000001", memberId))
-                    .isInstanceOf(CoreException.class)
-                    .hasFieldOrPropertyWithValue("errorType", ErrorType.CONFLICT);
         }
 
         @Test
@@ -104,17 +81,15 @@ class CouponServiceTest {
         void issueUserCoupon_duplicateIssue_throws409() {
             // given
             Long memberId = 1L;
+            Long couponTemplateId = 42L;
             CouponTemplateModel template = mock(CouponTemplateModel.class);
             when(template.isDeleted()).thenReturn(false);
             when(template.isExpired()).thenReturn(false);
-            when(template.getIssuedQuantity()).thenReturn(0);
-            when(template.getTotalQuantity()).thenReturn(10);
-            when(couponTemplateRepository.findByCouponTemplateIdForUpdate(any())).thenReturn(Optional.of(template));
+            when(couponTemplateRepository.findById(couponTemplateId)).thenReturn(Optional.of(template));
             when(userCouponRepository.existsByRefMemberIdAndRefCouponTemplateId(any(), any())).thenReturn(true);
 
             // when & then
-            assertThatThrownBy(() -> couponService.issueUserCoupon(
-                    "00000000-0000-0000-0000-000000000001", memberId))
+            assertThatThrownBy(() -> couponService.issueUserCoupon(couponTemplateId, memberId))
                     .isInstanceOf(CoreException.class)
                     .hasFieldOrPropertyWithValue("errorType", ErrorType.CONFLICT);
         }
@@ -136,7 +111,7 @@ class CouponServiceTest {
             when(template.getValue()).thenReturn(discountValue);
 
             // when
-            BigDecimal discount = couponService.calculateDiscount("00000000-0000-0000-0000-000000000001", memberId, originalAmount);
+            BigDecimal discount = couponService.calculateDiscount(1L, memberId, originalAmount);
 
             // then
             assertThat(discount).isEqualByComparingTo(BigDecimal.valueOf(5000));
@@ -154,7 +129,7 @@ class CouponServiceTest {
             when(template.getValue()).thenReturn(discountValue);
 
             // when
-            BigDecimal discount = couponService.calculateDiscount("00000000-0000-0000-0000-000000000001", memberId, originalAmount);
+            BigDecimal discount = couponService.calculateDiscount(1L, memberId, originalAmount);
 
             // then
             assertThat(discount).isEqualByComparingTo(BigDecimal.valueOf(3000));
@@ -172,7 +147,7 @@ class CouponServiceTest {
             when(template.getValue()).thenReturn(rateValue);
 
             // when
-            BigDecimal discount = couponService.calculateDiscount("00000000-0000-0000-0000-000000000001", memberId, originalAmount);
+            BigDecimal discount = couponService.calculateDiscount(1L, memberId, originalAmount);
 
             // then
             assertThat(discount).isEqualByComparingTo(BigDecimal.valueOf(1000));
@@ -181,18 +156,17 @@ class CouponServiceTest {
         @Test
         @DisplayName("타 유저 쿠폰 사용 시도 - 403 Forbidden")
         void calculateDiscount_otherMemberCoupon_throws403() {
-            // given - 소유권 검증에서 바로 던지므로 이후 stub 없이 최소 설정
+            // given
             Long ownerMemberId = 1L;
             Long attackerMemberId = 2L;
-            String userCouponIdValue = "00000000-0000-0000-0000-000000000001";
+            Long userCouponId = 1L;
             UserCouponModel userCoupon = mock(UserCouponModel.class);
             when(userCoupon.getRefMemberId()).thenReturn(ownerMemberId);
-            when(userCouponRepository.findByUserCouponId(new UserCouponId(userCouponIdValue)))
-                    .thenReturn(Optional.of(userCoupon));
+            when(userCouponRepository.findById(userCouponId)).thenReturn(Optional.of(userCoupon));
 
             // when & then
             assertThatThrownBy(() -> couponService.calculateDiscount(
-                    userCouponIdValue, attackerMemberId, BigDecimal.valueOf(10000)))
+                    userCouponId, attackerMemberId, BigDecimal.valueOf(10000)))
                     .isInstanceOf(CoreException.class)
                     .hasFieldOrPropertyWithValue("errorType", ErrorType.FORBIDDEN);
         }
@@ -207,27 +181,24 @@ class CouponServiceTest {
             setupBaseMocksForDiscount(memberId, minOrderAmount);
 
             // when & then
-            assertThatThrownBy(() -> couponService.calculateDiscount(
-                    "00000000-0000-0000-0000-000000000001", memberId, originalAmount))
+            assertThatThrownBy(() -> couponService.calculateDiscount(1L, memberId, originalAmount))
                     .isInstanceOf(CoreException.class)
                     .hasFieldOrPropertyWithValue("errorType", ErrorType.BAD_REQUEST);
         }
 
-        // 공통 mock 설정: userCoupon + template 기본 스텁, template 반환
         private CouponTemplateModel setupBaseMocksForDiscount(Long memberId, BigDecimal minOrderAmount) {
-            String userCouponIdValue = "00000000-0000-0000-0000-000000000001";
+            Long userCouponId = 1L;
             UserCouponModel userCoupon = mock(UserCouponModel.class);
             when(userCoupon.getRefMemberId()).thenReturn(memberId);
             when(userCoupon.isAvailable()).thenReturn(true);
             when(userCoupon.isExpired(any())).thenReturn(false);
             when(userCoupon.getRefCouponTemplateId()).thenReturn(1L);
-            when(userCouponRepository.findByUserCouponId(new UserCouponId(userCouponIdValue)))
-                    .thenReturn(Optional.of(userCoupon));
+            when(userCouponRepository.findById(userCouponId)).thenReturn(Optional.of(userCoupon));
 
             CouponTemplateModel template = mock(CouponTemplateModel.class);
             when(template.getMinOrderAmount()).thenReturn(minOrderAmount);
             when(template.getExpiredAt()).thenReturn(ZonedDateTime.now().plusDays(1));
-            when(couponTemplateRepository.findByPkId(1L)).thenReturn(Optional.of(template));
+            when(couponTemplateRepository.findById(1L)).thenReturn(Optional.of(template));
             return template;
         }
     }
@@ -240,15 +211,11 @@ class CouponServiceTest {
         @DisplayName("성공 - rowsAffected == 1")
         void useUserCoupon_success() {
             // given
-            String userCouponIdValue = "00000000-0000-0000-0000-000000000001";
-            UserCouponModel userCoupon = mock(UserCouponModel.class);
-            when(userCoupon.getId()).thenReturn(1L);
-            when(userCouponRepository.findByUserCouponId(new UserCouponId(userCouponIdValue)))
-                    .thenReturn(Optional.of(userCoupon));
-            when(userCouponRepository.useIfAvailable(1L)).thenReturn(1);
+            Long userCouponId = 1L;
+            when(userCouponRepository.useIfAvailable(userCouponId)).thenReturn(1);
 
             // when
-            Long pkId = couponService.useUserCoupon(userCouponIdValue);
+            Long pkId = couponService.useUserCoupon(userCouponId);
 
             // then
             assertThat(pkId).isEqualTo(1L);
@@ -258,15 +225,11 @@ class CouponServiceTest {
         @DisplayName("실패 - rowsAffected == 0 → 409 Conflict")
         void useUserCoupon_alreadyUsed_throws409() {
             // given
-            String userCouponIdValue = "00000000-0000-0000-0000-000000000001";
-            UserCouponModel userCoupon = mock(UserCouponModel.class);
-            when(userCoupon.getId()).thenReturn(1L);
-            when(userCouponRepository.findByUserCouponId(new UserCouponId(userCouponIdValue)))
-                    .thenReturn(Optional.of(userCoupon));
-            when(userCouponRepository.useIfAvailable(1L)).thenReturn(0);
+            Long userCouponId = 1L;
+            when(userCouponRepository.useIfAvailable(userCouponId)).thenReturn(0);
 
             // when & then
-            assertThatThrownBy(() -> couponService.useUserCoupon(userCouponIdValue))
+            assertThatThrownBy(() -> couponService.useUserCoupon(userCouponId))
                     .isInstanceOf(CoreException.class)
                     .hasFieldOrPropertyWithValue("errorType", ErrorType.CONFLICT);
         }
@@ -289,10 +252,10 @@ class CouponServiceTest {
         }
     }
 
-    private CouponTemplateModel createActiveTemplate(int totalQuantity) {
+    private CouponTemplateModel createActiveTemplate() {
         return CouponTemplateModel.create(
                 "테스트쿠폰", CouponType.FIXED, BigDecimal.valueOf(1000), null,
-                ZonedDateTime.now().plusDays(7), totalQuantity
+                ZonedDateTime.now().plusDays(7)
         );
     }
 }

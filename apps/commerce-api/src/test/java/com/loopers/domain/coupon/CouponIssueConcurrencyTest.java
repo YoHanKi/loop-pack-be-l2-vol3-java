@@ -1,8 +1,6 @@
 package com.loopers.domain.coupon;
 
 import com.loopers.application.coupon.CouponApp;
-import com.loopers.domain.coupon.vo.CouponTemplateId;
-import com.loopers.support.error.CoreException;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,31 +36,29 @@ class CouponIssueConcurrencyTest {
     }
 
     @Test
-    @DisplayName("totalQuantity=5인 쿠폰을 10명이 동시 발급 시도 → 정확히 5명만 성공")
-    void issueCoupon_concurrency_onlyTotalQuantitySucceeds() throws InterruptedException {
+    @DisplayName("동일 사용자가 같은 쿠폰을 10번 동시 발급 시도 → UNIQUE 제약으로 정확히 1번만 성공")
+    void issueCoupon_concurrency_sameUserOnlyOneSucceeds() throws InterruptedException {
         // given
-        int totalQuantity = 5;
-        int concurrentUsers = 10;
-        CouponTemplateModel template = CouponTemplateModel.create(
+        CouponTemplateModel savedTemplate = couponTemplateRepository.save(CouponTemplateModel.create(
                 "동시성테스트쿠폰", CouponType.FIXED, BigDecimal.valueOf(1000), null,
-                ZonedDateTime.now().plusDays(7), totalQuantity
-        );
-        couponTemplateRepository.save(template);
-        String couponTemplateIdValue = template.getCouponTemplateId().value();
+                ZonedDateTime.now().plusDays(7)
+        ));
+        Long couponTemplateId = savedTemplate.getId();
+        Long memberId = 1L;
 
+        int concurrentThreads = 10;
         AtomicInteger successCount = new AtomicInteger(0);
         AtomicInteger failCount = new AtomicInteger(0);
-        CountDownLatch latch = new CountDownLatch(concurrentUsers);
-        ExecutorService executor = Executors.newFixedThreadPool(concurrentUsers);
+        CountDownLatch latch = new CountDownLatch(concurrentThreads);
+        ExecutorService executor = Executors.newFixedThreadPool(concurrentThreads);
 
         // when
-        for (int i = 0; i < concurrentUsers; i++) {
-            final long memberId = i + 1L;
+        for (int i = 0; i < concurrentThreads; i++) {
             executor.submit(() -> {
                 try {
-                    couponApp.issueUserCoupon(couponTemplateIdValue, memberId);
+                    couponApp.issueUserCoupon(couponTemplateId, memberId);
                     successCount.incrementAndGet();
-                } catch (CoreException e) {
+                } catch (Exception e) {
                     failCount.incrementAndGet();
                 } finally {
                     latch.countDown();
@@ -74,11 +70,7 @@ class CouponIssueConcurrencyTest {
         executor.shutdown();
 
         // then
-        assertThat(successCount.get()).isEqualTo(totalQuantity);
-        assertThat(failCount.get()).isEqualTo(concurrentUsers - totalQuantity);
-
-        CouponTemplateModel updated = couponTemplateRepository.findByCouponTemplateId(
-                new CouponTemplateId(couponTemplateIdValue)).orElseThrow();
-        assertThat(updated.getIssuedQuantity()).isEqualTo(totalQuantity);
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(failCount.get()).isEqualTo(concurrentThreads - 1);
     }
 }

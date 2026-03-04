@@ -16,11 +16,11 @@ public class OrderFacade {
     private final CouponApp couponApp;
 
     @Transactional
-    public OrderInfo createOrder(Long memberId, List<OrderItemCommand> items, String userCouponId) {
+    public OrderInfo createOrder(Long memberId, List<OrderItemCommand> items, Long userCouponId) {
         BigDecimal discountAmount = BigDecimal.ZERO;
         Long refUserCouponId = null;
 
-        if (userCouponId != null && !userCouponId.isBlank()) {
+        if (userCouponId != null) {
             // 원래 주문금액 계산 (재고 차감 전 조회)
             BigDecimal originalAmount = orderApp.calculateOriginalAmount(items);
             // 할인 금액 계산 (소유권 포함 검증)

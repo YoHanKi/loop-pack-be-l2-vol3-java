@@ -20,7 +20,7 @@ public class CouponV1Controller implements CouponV1ApiSpec {
     @PostMapping("/api/v1/coupons/{couponId}/issue")
     @Override
     public ResponseEntity<ApiResponse<CouponV1Dto.UserCouponResponse>> issueCoupon(
-            @PathVariable String couponId,
+            @PathVariable Long couponId,
             @Valid @RequestBody CouponV1Dto.IssueRequest request
     ) {
         UserCouponInfo info = couponApp.issueUserCoupon(couponId, request.memberId());

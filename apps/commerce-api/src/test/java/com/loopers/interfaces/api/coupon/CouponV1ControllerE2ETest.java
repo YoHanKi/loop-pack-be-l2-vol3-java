@@ -15,7 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -48,11 +47,10 @@ class CouponV1ControllerE2ETest {
 
     @BeforeEach
     void setUp() {
-        template = CouponTemplateModel.create(
+        template = couponTemplateRepository.save(CouponTemplateModel.create(
                 "테스트쿠폰", CouponType.FIXED, BigDecimal.valueOf(1000), null,
-                ZonedDateTime.now().plusDays(7), 5
-        );
-        couponTemplateRepository.save(template);
+                ZonedDateTime.now().plusDays(7)
+        ));
     }
 
     @AfterEach
@@ -69,7 +67,7 @@ class CouponV1ControllerE2ETest {
         void issueCoupon_success_returns201() {
             // given
             Long memberId = 1L;
-            String url = "/api/v1/coupons/" + template.getCouponTemplateId().value() + "/issue";
+            String url = "/api/v1/coupons/" + template.getId() + "/issue";
             Map<String, Long> body = Map.of("memberId", memberId);
 
             // when
@@ -85,7 +83,7 @@ class CouponV1ControllerE2ETest {
         void issueCoupon_duplicate_returns409() {
             // given
             Long memberId = 1L;
-            String url = "/api/v1/coupons/" + template.getCouponTemplateId().value() + "/issue";
+            String url = "/api/v1/coupons/" + template.getId() + "/issue";
             Map<String, Long> body = Map.of("memberId", memberId);
 
             restTemplate.postForEntity(url, body, ApiResponse.class);
@@ -101,7 +99,7 @@ class CouponV1ControllerE2ETest {
         @DisplayName("존재하지 않는 쿠폰 - 404 Not Found")
         void issueCoupon_notFound_returns404() {
             // given
-            String url = "/api/v1/coupons/00000000-0000-0000-0000-000000000001/issue";
+            String url = "/api/v1/coupons/999999/issue";
             Map<String, Long> body = Map.of("memberId", 1L);
 
             // when
@@ -121,7 +119,7 @@ class CouponV1ControllerE2ETest {
         void getMyUserCoupons_afterIssue_returns200WithCoupons() {
             // given
             Long memberId = 1L;
-            couponApp.issueUserCoupon(template.getCouponTemplateId().value(), memberId);
+            couponApp.issueUserCoupon(template.getId(), memberId);
 
             ParameterizedTypeReference<ApiResponse<List<CouponV1Dto.UserCouponResponse>>> responseType =
                     new ParameterizedTypeReference<>() {};

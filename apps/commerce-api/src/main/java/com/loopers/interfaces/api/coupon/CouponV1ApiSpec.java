@@ -15,7 +15,7 @@ public interface CouponV1ApiSpec {
 
     @Operation(summary = "쿠폰 발급")
     ResponseEntity<ApiResponse<CouponV1Dto.UserCouponResponse>> issueCoupon(
-            @PathVariable String couponId,
+            @PathVariable Long couponId,
             @RequestBody CouponV1Dto.IssueRequest request
     );
 
