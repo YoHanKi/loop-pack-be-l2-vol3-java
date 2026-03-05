@@ -57,11 +57,6 @@ public class ProductApp {
         return ProductInfo.from(product);
     }
 
-    @Transactional(readOnly = true)
-    public long countLikes(Long productId) {
-        return productRepository.countLikes(productId);
-    }
-
     @Transactional
     public void deleteProductsByBrandRefId(Long brandId) {
         productService.deleteProductsByBrandRefId(brandId);

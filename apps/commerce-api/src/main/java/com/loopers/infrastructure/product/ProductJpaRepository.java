@@ -33,7 +33,7 @@ public interface ProductJpaRepository extends JpaRepository<ProductModel, Long> 
     Page<ProductModel> findActiveSortByPriceAsc(@Param("refBrandId") Long refBrandId, Pageable pageable);
 
     @Query(
-            value = "SELECT p.* FROM products p LEFT JOIN likes l ON p.id = l.ref_product_id WHERE p.deleted_at IS NULL AND (:refBrandId IS NULL OR p.ref_brand_id = :refBrandId) GROUP BY p.id ORDER BY COUNT(l.id) DESC, p.updated_at DESC",
+            value = "SELECT * FROM products WHERE deleted_at IS NULL AND (:refBrandId IS NULL OR ref_brand_id = :refBrandId) ORDER BY like_count DESC, updated_at DESC",
             countQuery = "SELECT COUNT(*) FROM products WHERE deleted_at IS NULL AND (:refBrandId IS NULL OR ref_brand_id = :refBrandId)",
             nativeQuery = true
     )
@@ -53,11 +53,19 @@ public interface ProductJpaRepository extends JpaRepository<ProductModel, Long> 
     )
     void increaseStock(@Param("productId") Long productId, @Param("quantity") int quantity);
 
+    @Modifying(clearAutomatically = true)
     @Query(
-            value = "SELECT COUNT(*) FROM likes WHERE ref_product_id = :productId",
+            value = "UPDATE products SET like_count = like_count + 1 WHERE id = :productId",
             nativeQuery = true
     )
-    long countLikesByProductId(@Param("productId") Long productId);
+    void incrementLikeCount(@Param("productId") Long productId);
+
+    @Modifying(clearAutomatically = true)
+    @Query(
+            value = "UPDATE products SET like_count = like_count - 1 WHERE id = :productId AND like_count > 0",
+            nativeQuery = true
+    )
+    void decrementLikeCount(@Param("productId") Long productId);
 
     @Query(
             value = "SELECT * FROM products WHERE ref_brand_id = :brandId AND deleted_at IS NULL",

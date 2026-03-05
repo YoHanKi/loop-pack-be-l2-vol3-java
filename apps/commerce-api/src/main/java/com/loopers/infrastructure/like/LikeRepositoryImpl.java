@@ -28,8 +28,13 @@ public class LikeRepositoryImpl implements LikeRepository {
     }
 
     @Override
-    public void delete(LikeModel like) {
-        likeJpaRepository.delete(like);
+    public int restoreIfDeleted(Long likeId) {
+        return likeJpaRepository.restoreIfDeleted(likeId);
+    }
+
+    @Override
+    public int softDeleteIfActive(Long likeId) {
+        return likeJpaRepository.softDeleteIfActive(likeId);
     }
 
     @Override
