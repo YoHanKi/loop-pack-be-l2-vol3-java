@@ -1,7 +1,9 @@
 package com.loopers.infrastructure.coupon;
 
+import com.loopers.domain.common.vo.RefMemberId;
 import com.loopers.domain.coupon.UserCouponModel;
 import com.loopers.domain.coupon.UserCouponRepository;
+import com.loopers.domain.coupon.vo.RefCouponTemplateId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -25,17 +27,17 @@ public class UserCouponRepositoryImpl implements UserCouponRepository {
     }
 
     @Override
-    public List<UserCouponModel> findByRefMemberId(Long memberId) {
+    public List<UserCouponModel> findByRefMemberId(RefMemberId memberId) {
         return userCouponJpaRepository.findByRefMemberId(memberId);
     }
 
     @Override
-    public List<UserCouponModel> findByRefCouponTemplateId(Long templateId) {
+    public List<UserCouponModel> findByRefCouponTemplateId(RefCouponTemplateId templateId) {
         return userCouponJpaRepository.findByRefCouponTemplateId(templateId);
     }
 
     @Override
-    public boolean existsByRefMemberIdAndRefCouponTemplateId(Long memberId, Long templateId) {
+    public boolean existsByRefMemberIdAndRefCouponTemplateId(RefMemberId memberId, RefCouponTemplateId templateId) {
         return userCouponJpaRepository.existsByRefMemberIdAndRefCouponTemplateId(memberId, templateId);
     }
 

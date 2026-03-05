@@ -1,11 +1,13 @@
 package com.loopers.application.coupon;
 
+import com.loopers.domain.common.vo.RefMemberId;
 import com.loopers.domain.coupon.CouponService;
 import com.loopers.domain.coupon.CouponTemplateModel;
 import com.loopers.domain.coupon.CouponTemplateRepository;
 import com.loopers.domain.coupon.CouponType;
 import com.loopers.domain.coupon.UserCouponModel;
 import com.loopers.domain.coupon.UserCouponRepository;
+import com.loopers.domain.coupon.vo.RefCouponTemplateId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
@@ -65,7 +67,7 @@ public class CouponApp {
     public List<UserCouponInfo> getIssuedCoupons(Long couponTemplateId) {
         CouponTemplateModel template = couponTemplateRepository.findById(couponTemplateId)
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿이 존재하지 않습니다."));
-        List<UserCouponModel> userCoupons = userCouponRepository.findByRefCouponTemplateId(template.getId());
+        List<UserCouponModel> userCoupons = userCouponRepository.findByRefCouponTemplateId(new RefCouponTemplateId(template.getId()));
         ZonedDateTime expiredAt = template.getExpiredAt();
         return userCoupons.stream()
                 .map(uc -> UserCouponInfo.from(uc, expiredAt))
@@ -75,17 +77,17 @@ public class CouponApp {
     @Transactional
     public UserCouponInfo issueUserCoupon(Long couponTemplateId, Long memberId) {
         UserCouponModel userCoupon = couponService.issueUserCoupon(couponTemplateId, memberId);
-        CouponTemplateModel template = couponTemplateRepository.findById(userCoupon.getRefCouponTemplateId())
+        CouponTemplateModel template = couponTemplateRepository.findById(userCoupon.getRefCouponTemplateId().value())
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿이 존재하지 않습니다."));
         return UserCouponInfo.from(userCoupon, template.getExpiredAt());
     }
 
     @Transactional(readOnly = true)
     public List<UserCouponInfo> getMyUserCoupons(Long memberId) {
-        List<UserCouponModel> userCoupons = userCouponRepository.findByRefMemberId(memberId);
+        List<UserCouponModel> userCoupons = userCouponRepository.findByRefMemberId(new RefMemberId(memberId));
         return userCoupons.stream()
                 .map(uc -> {
-                    CouponTemplateModel template = couponTemplateRepository.findById(uc.getRefCouponTemplateId())
+                    CouponTemplateModel template = couponTemplateRepository.findById(uc.getRefCouponTemplateId().value())
                             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿이 존재하지 않습니다."));
                     return UserCouponInfo.from(uc, template.getExpiredAt());
                 })

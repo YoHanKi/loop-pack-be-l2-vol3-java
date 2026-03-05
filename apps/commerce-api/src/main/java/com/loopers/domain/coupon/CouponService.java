@@ -1,5 +1,7 @@
 package com.loopers.domain.coupon;
 
+import com.loopers.domain.common.vo.RefMemberId;
+import com.loopers.domain.coupon.vo.RefCouponTemplateId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
@@ -49,7 +51,7 @@ public class CouponService {
         }
 
         boolean alreadyIssued = userCouponRepository.existsByRefMemberIdAndRefCouponTemplateId(
-                memberId, template.getId());
+                new RefMemberId(memberId), new RefCouponTemplateId(template.getId()));
         if (alreadyIssued) {
             throw new CoreException(ErrorType.CONFLICT, "이미 발급받은 쿠폰입니다.");
         }
@@ -66,7 +68,7 @@ public class CouponService {
         UserCouponModel userCoupon = userCouponRepository.findById(userCouponId)
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "사용자 쿠폰이 존재하지 않습니다."));
 
-        if (!userCoupon.getRefMemberId().equals(memberId)) {
+        if (!userCoupon.getRefMemberId().value().equals(memberId)) {
             throw new CoreException(ErrorType.FORBIDDEN, "본인 소유의 쿠폰만 사용할 수 있습니다.");
         }
 
@@ -74,7 +76,7 @@ public class CouponService {
             throw new CoreException(ErrorType.CONFLICT, "사용 가능한 쿠폰이 아닙니다.");
         }
 
-        CouponTemplateModel template = couponTemplateRepository.findById(userCoupon.getRefCouponTemplateId())
+        CouponTemplateModel template = couponTemplateRepository.findById(userCoupon.getRefCouponTemplateId().value())
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿이 존재하지 않습니다."));
 
         if (userCoupon.isExpired(template.getExpiredAt())) {

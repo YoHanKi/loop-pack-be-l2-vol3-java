@@ -1,6 +1,10 @@
 package com.loopers.domain.coupon;
 
 import com.loopers.domain.BaseEntity;
+import com.loopers.domain.common.vo.RefMemberId;
+import com.loopers.domain.coupon.vo.RefCouponTemplateId;
+import com.loopers.infrastructure.jpa.converter.RefCouponTemplateIdConverter;
+import com.loopers.infrastructure.jpa.converter.RefMemberIdConverter;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -20,11 +24,13 @@ import java.time.ZonedDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserCouponModel extends BaseEntity {
 
+    @Convert(converter = RefMemberIdConverter.class)
     @Column(name = "ref_member_id", nullable = false)
-    private Long refMemberId;
+    private RefMemberId refMemberId;
 
+    @Convert(converter = RefCouponTemplateIdConverter.class)
     @Column(name = "ref_coupon_template_id", nullable = false)
-    private Long refCouponTemplateId;
+    private RefCouponTemplateId refCouponTemplateId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 10)
@@ -35,8 +41,8 @@ public class UserCouponModel extends BaseEntity {
     private int version;
 
     private UserCouponModel(Long refMemberId, Long refCouponTemplateId) {
-        this.refMemberId = refMemberId;
-        this.refCouponTemplateId = refCouponTemplateId;
+        this.refMemberId = new RefMemberId(refMemberId);
+        this.refCouponTemplateId = new RefCouponTemplateId(refCouponTemplateId);
         this.status = UserCouponStatus.AVAILABLE;
         this.version = 0;
     }

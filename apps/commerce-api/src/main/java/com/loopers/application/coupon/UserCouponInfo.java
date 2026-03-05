@@ -20,8 +20,8 @@ public record UserCouponInfo(
         }
         return new UserCouponInfo(
                 model.getId(),
-                model.getRefMemberId(),
-                model.getRefCouponTemplateId(),
+                model.getRefMemberId().value(),
+                model.getRefCouponTemplateId().value(),
                 resolvedStatus,
                 model.getCreatedAt()
         );

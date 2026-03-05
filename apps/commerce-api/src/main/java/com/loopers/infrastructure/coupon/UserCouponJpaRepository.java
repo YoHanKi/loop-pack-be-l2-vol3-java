@@ -1,6 +1,8 @@
 package com.loopers.infrastructure.coupon;
 
+import com.loopers.domain.common.vo.RefMemberId;
 import com.loopers.domain.coupon.UserCouponModel;
+import com.loopers.domain.coupon.vo.RefCouponTemplateId;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -10,11 +12,11 @@ import java.util.List;
 
 public interface UserCouponJpaRepository extends JpaRepository<UserCouponModel, Long> {
 
-    List<UserCouponModel> findByRefMemberId(Long memberId);
+    List<UserCouponModel> findByRefMemberId(RefMemberId memberId);
 
-    List<UserCouponModel> findByRefCouponTemplateId(Long templateId);
+    List<UserCouponModel> findByRefCouponTemplateId(RefCouponTemplateId templateId);
 
-    boolean existsByRefMemberIdAndRefCouponTemplateId(Long memberId, Long templateId);
+    boolean existsByRefMemberIdAndRefCouponTemplateId(RefMemberId memberId, RefCouponTemplateId templateId);
 
     @Modifying(clearAutomatically = true)
     @Query(

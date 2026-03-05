@@ -1,5 +1,8 @@
 package com.loopers.domain.coupon;
 
+import com.loopers.domain.common.vo.RefMemberId;
+import com.loopers.domain.coupon.vo.RefCouponTemplateId;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -9,11 +12,11 @@ public interface UserCouponRepository {
 
     Optional<UserCouponModel> findById(Long id);
 
-    List<UserCouponModel> findByRefMemberId(Long memberId);
+    List<UserCouponModel> findByRefMemberId(RefMemberId memberId);
 
-    List<UserCouponModel> findByRefCouponTemplateId(Long templateId);
+    List<UserCouponModel> findByRefCouponTemplateId(RefCouponTemplateId templateId);
 
-    boolean existsByRefMemberIdAndRefCouponTemplateId(Long memberId, Long templateId);
+    boolean existsByRefMemberIdAndRefCouponTemplateId(RefMemberId memberId, RefCouponTemplateId templateId);
 
     int useIfAvailable(Long id);
 
