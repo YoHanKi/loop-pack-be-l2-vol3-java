@@ -6,7 +6,6 @@ import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.vo.ProductId;
 import com.loopers.support.error.CoreException;
-import com.loopers.support.error.ErrorType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -14,9 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 
-import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,9 +59,9 @@ class LikeServiceTest {
 
             // then
             assertThat(result).isNotNull();
-            verify(productRepository, times(1)).findByProductId(any(ProductId.class));
             verify(likeRepository, times(1)).findByRefMemberIdAndRefProductId(any(RefMemberId.class), any(RefProductId.class));
             verify(likeRepository, times(1)).save(any(LikeModel.class));
+            verify(productRepository, times(1)).incrementLikeCount(100L);
         }
 
         @Test
@@ -87,6 +84,7 @@ class LikeServiceTest {
             // then
             assertThat(result).isEqualTo(existingLike);
             verify(likeRepository, never()).save(any(LikeModel.class));
+            verify(productRepository, never()).incrementLikeCount(any());
         }
 
         @Test
@@ -124,12 +122,14 @@ class LikeServiceTest {
             when(productRepository.findByProductId(any(ProductId.class))).thenReturn(Optional.of(mockProduct));
             when(likeRepository.findByRefMemberIdAndRefProductId(any(RefMemberId.class), any(RefProductId.class)))
                     .thenReturn(Optional.of(existingLike));
+            when(likeRepository.softDeleteIfActive(any())).thenReturn(1);
 
             // when
             likeService.removeLike(memberId, productId);
 
             // then
-            verify(likeRepository, times(1)).delete(existingLike);
+            verify(likeRepository, times(1)).softDeleteIfActive(existingLike.getId());
+            verify(productRepository, times(1)).decrementLikeCount(100L);
         }
 
         @Test
@@ -149,7 +149,8 @@ class LikeServiceTest {
             likeService.removeLike(memberId, productId);
 
             // then
-            verify(likeRepository, never()).delete(any(LikeModel.class));
+            verify(likeRepository, never()).softDeleteIfActive(any());
+            verify(productRepository, never()).decrementLikeCount(any());
         }
 
         @Test
@@ -166,7 +167,7 @@ class LikeServiceTest {
                     .isInstanceOf(CoreException.class)
                     .hasMessageContaining("해당 ID의 상품이 존재하지 않습니다");
 
-            verify(likeRepository, never()).delete(any(LikeModel.class));
+            verify(likeRepository, never()).softDeleteIfActive(any());
         }
     }
 }

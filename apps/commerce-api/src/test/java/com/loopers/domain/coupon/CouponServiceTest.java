@@ -1,5 +1,7 @@
 package com.loopers.domain.coupon;
 
+import com.loopers.domain.common.vo.RefMemberId;
+import com.loopers.domain.coupon.vo.RefCouponTemplateId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import org.junit.jupiter.api.DisplayName;
@@ -42,7 +44,10 @@ class CouponServiceTest {
             // given
             Long memberId = 1L;
             Long couponTemplateId = 42L;
-            CouponTemplateModel template = createActiveTemplate();
+            CouponTemplateModel template = mock(CouponTemplateModel.class);
+            when(template.isDeleted()).thenReturn(false);
+            when(template.isExpired()).thenReturn(false);
+            when(template.getId()).thenReturn(couponTemplateId);
             when(couponTemplateRepository.findById(couponTemplateId)).thenReturn(Optional.of(template));
             when(userCouponRepository.existsByRefMemberIdAndRefCouponTemplateId(any(), any())).thenReturn(false);
             UserCouponModel savedCoupon = mock(UserCouponModel.class);
@@ -85,6 +90,7 @@ class CouponServiceTest {
             CouponTemplateModel template = mock(CouponTemplateModel.class);
             when(template.isDeleted()).thenReturn(false);
             when(template.isExpired()).thenReturn(false);
+            when(template.getId()).thenReturn(couponTemplateId);
             when(couponTemplateRepository.findById(couponTemplateId)).thenReturn(Optional.of(template));
             when(userCouponRepository.existsByRefMemberIdAndRefCouponTemplateId(any(), any())).thenReturn(true);
 
@@ -161,7 +167,7 @@ class CouponServiceTest {
             Long attackerMemberId = 2L;
             Long userCouponId = 1L;
             UserCouponModel userCoupon = mock(UserCouponModel.class);
-            when(userCoupon.getRefMemberId()).thenReturn(ownerMemberId);
+            when(userCoupon.getRefMemberId()).thenReturn(new RefMemberId(ownerMemberId));
             when(userCouponRepository.findById(userCouponId)).thenReturn(Optional.of(userCoupon));
 
             // when & then
@@ -189,10 +195,10 @@ class CouponServiceTest {
         private CouponTemplateModel setupBaseMocksForDiscount(Long memberId, BigDecimal minOrderAmount) {
             Long userCouponId = 1L;
             UserCouponModel userCoupon = mock(UserCouponModel.class);
-            when(userCoupon.getRefMemberId()).thenReturn(memberId);
+            when(userCoupon.getRefMemberId()).thenReturn(new RefMemberId(memberId));
             when(userCoupon.isAvailable()).thenReturn(true);
             when(userCoupon.isExpired(any())).thenReturn(false);
-            when(userCoupon.getRefCouponTemplateId()).thenReturn(1L);
+            when(userCoupon.getRefCouponTemplateId()).thenReturn(new RefCouponTemplateId(1L));
             when(userCouponRepository.findById(userCouponId)).thenReturn(Optional.of(userCoupon));
 
             CouponTemplateModel template = mock(CouponTemplateModel.class);
