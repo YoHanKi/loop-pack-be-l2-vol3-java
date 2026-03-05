@@ -6,14 +6,16 @@
 
 **레이어 구조**:
 - **Interfaces Layer**: Controller
-- **Application Layer**: Facade
-- **Domain Layer**: Service, Reader, Model
+- **Application Layer**: App (단일 도메인), Facade (복수 App 조합)
+- **Domain Layer**: Service, Model
 - **Infrastructure Layer**: Repository(Impl), JpaRepository
 
 **동시성 전략 요약**:
 | 도메인 | 전략 | 근거 |
 |--------|------|------|
-| 재고 (stock) | 비관적 락 (`SELECT ... FOR UPDATE`) | 높은 경합, 과판매 절대 불가 |
+| 재고 (stock) | 조건부 UPDATE + productId ASC 정렬 | 원자적 차감(`WHERE stock_quantity >= qty`), 정렬로 데드락 방지 |
+| 쿠폰 발급 (coupon issue) | DB UNIQUE 제약 + 예외 catch | 수량 제한 없음, 중복 발급만 방지 |
+| 쿠폰 사용 (coupon use) | 조건부 UPDATE (`WHERE status = 'AVAILABLE'`) | 상태 기반 원자적 변경, 락 없이 안전 |
 | 좋아요 (like) | DB UNIQUE 제약 + 예외 catch | 낮은 경합, 중복 1건은 치명적이지 않음 |
 
 ---
@@ -21,11 +23,12 @@
 ## 1. 주문 생성 (POST /api/v1/orders)
 
 ### 검증 목적
-주문 생성의 핵심은 **재고 차감의 동시성 제어**와 **스냅샷 저장의 트랜잭션 일관성**이다. 이 다이어그램은:
-1. productId 정렬로 데드락을 방지하는 흐름
-2. 비관적 락(`SELECT ... FOR UPDATE`)으로 재고를 안전하게 차감하는 방법
-3. 주문/주문항목 저장과 재고 차감이 단일 트랜잭션으로 묶이는 경계
-를 검증한다.
+주문 생성의 핵심은 **쿠폰 할인 적용**, **재고 차감의 동시성 제어**, **스냅샷 저장의 트랜잭션 일관성**이다. 이 다이어그램은:
+1. OrderFacade가 CouponApp + OrderApp을 조합하는 크로스 도메인 오케스트레이션 흐름
+2. 쿠폰 적용 시 할인 계산 → 쿠폰 사용 처리 → 주문 생성 순서 보장
+3. productId 정렬로 데드락을 방지하는 흐름
+4. 조건부 UPDATE(`WHERE stock_quantity >= qty`)로 재고를 원자적으로 차감하는 방법
+을 검증한다.
 
 ### 시퀀스 다이어그램
 
@@ -33,54 +36,79 @@
 sequenceDiagram
     actor Customer
     participant Controller as OrderV1Controller
+    participant Facade as OrderFacade
+    participant CouponApp as CouponApp
+    participant OrderApp as OrderApp
     participant OrderService as OrderService
     participant ProductRepo as ProductRepository
 
-    Customer->>Controller: POST /api/v1/orders<br/>{items: [{productId, quantity}]}
-    Controller->>OrderService: createOrder(memberId, items)
+    Customer->>Controller: POST /api/v1/orders<br/>{memberId, items, userCouponId?}
+    Controller->>Facade: createOrder(memberId, items, userCouponId)
+
+    activate Facade
+    Note over Facade: @Transactional 시작
+
+    alt userCouponId 있음
+        %% 1. 원래 주문금액 계산 (재고 차감 전)
+        Facade->>OrderApp: calculateOriginalAmount(items)
+        OrderApp-->>Facade: originalAmount
+
+        %% 2. 할인 금액 계산 (소유권 + 상태 + 최소금액 검증)
+        Facade->>CouponApp: calculateDiscount(userCouponId, memberId, originalAmount)
+        CouponApp-->>Facade: discountAmount
+
+        %% 3. 쿠폰 사용 처리 (조건부 UPDATE → PK 반환)
+        Facade->>CouponApp: useUserCoupon(userCouponId)
+        Note over CouponApp: UPDATE user_coupons<br/>SET status='USED'<br/>WHERE id=? AND status='AVAILABLE'
+        CouponApp-->>Facade: refUserCouponId (PK)
+    else userCouponId 없음
+        Note over Facade: discountAmount = 0, refUserCouponId = null
+    end
+
+    %% 4. 주문 생성 (재고 차감 + 스냅샷 저장)
+    Facade->>OrderApp: createOrder(memberId, items, discountAmount, refUserCouponId)
+    OrderApp->>OrderService: createOrder(memberId, orderItems, discountAmount, refUserCouponId)
 
     activate OrderService
-    Note over OrderService: @Transactional 시작
+    Note over OrderService: @Transactional(REQUIRED - Facade 트랜잭션 참여)
 
-    %% 1. 중복 상품 합산
-    OrderService->>OrderService: aggregateQuantities(items)<br/>동일 productId 수량 합산
+    %% productId 오름차순 정렬 (데드락 방지)
+    OrderService->>OrderService: sort productIds ASC
 
-    %% 2. productId 오름차순 정렬 (데드락 방지)
-    OrderService->>OrderService: sort productIds ASC<br/>(락 획득 순서 고정)
-
-    %% 3. 상품 조회 + 비관적 락 + 재고 차감
     loop 각 상품 (정렬된 순서)
         OrderService->>ProductRepo: findByProductId(productId)
         ProductRepo-->>OrderService: ProductModel (or 404)
 
-        Note over OrderService,ProductRepo: SELECT FOR UPDATE<br/>(비관적 락 획득)
-        OrderService->>ProductRepo: decreaseStock(productId, quantity)<br/>재고 검증 후 차감
+        OrderService->>ProductRepo: decreaseStockIfAvailable(productId, qty)
+        Note over ProductRepo: UPDATE products<br/>SET stock_quantity = stock_quantity - :qty<br/>WHERE id = :productId AND stock_quantity >= :qty<br/>(조건부 UPDATE — 원자적)
 
-        alt 재고 부족
-            OrderService-->>Controller: CoreException(409 CONFLICT)
-            Controller-->>Customer: 409 Conflict {재고 부족}
-            Note over OrderService: @Transactional 롤백<br/>(락 해제)
+        alt rowsAffected == 0 (재고 부족)
+            OrderService-->>Facade: CoreException(409 CONFLICT)
+            Facade-->>Controller: 409 Conflict {재고 부족}
+            Note over Facade: @Transactional 롤백 (쿠폰 사용도 롤백)
         end
 
-        OrderService->>OrderService: createOrderItem(snapshot)<br/>product_id, product_name, price, quantity 저장
+        OrderService->>OrderService: createOrderItem(snapshot)
     end
 
-    %% 4. 주문 저장
     OrderService->>ProductRepo: save(OrderModel + OrderItemModels)
     ProductRepo-->>OrderService: OrderModel
 
-    Note over OrderService: @Transactional 커밋<br/>(모든 비관적 락 해제)
     deactivate OrderService
 
-    Controller-->>Customer: 201 Created<br/>{orderId, status, items}
+    Note over Facade: @Transactional 커밋 (모든 락 해제)
+    deactivate Facade
+
+    Facade-->>Controller: OrderInfo
+    Controller-->>Customer: 201 Created {orderId, finalAmount, discountAmount, items}
 ```
 
 ### 해석
-- **트랜잭션 경계**: `OrderService@Transactional`이 재고 차감부터 주문 저장까지 묶는다. 재고 부족 시 전체 롤백.
-- **비관적 락 전략**: `SELECT ... FOR UPDATE`로 행 잠금 → 재고 검증 → 차감. 조건부 UPDATE 방식보다 명시적이고 안전.
-- **데드락 방지**: productId 오름차순 정렬로 모든 트랜잭션이 동일한 순서로 락을 획득하여 순환 대기 제거.
-- **스냅샷 패턴**: OrderItemModel에 주문 시점의 product_id, product_name, price를 복사 저장. Product 삭제/수정 후에도 주문 이력 유지.
-- **Facade 없음**: 주문 도메인은 OrderService가 직접 ProductRepository를 의존하여 재고 차감 + 주문 저장 오케스트레이션.
+- **트랜잭션 경계**: `OrderFacade@Transactional`이 쿠폰 사용 처리부터 재고 차감·주문 저장까지 단일 트랜잭션으로 묶는다. 재고 부족 시 쿠폰 사용도 함께 롤백.
+- **크로스 도메인 Facade**: 2개 이상의 App(CouponApp + OrderApp)을 조합하므로 Facade 사용. Controller → Facade → App 패턴 준수.
+- **쿠폰 사용 전략**: 조건부 UPDATE(`WHERE status = 'AVAILABLE'`)로 락 없이 원자적 상태 변경. rowsAffected == 0 이면 이미 사용/불가 상태.
+- **재고 조건부 UPDATE**: `decreaseStockIfAvailable`이 `WHERE stock_quantity >= qty` 조건으로 차감과 검증을 원자적으로 실행. productId 오름차순 정렬로 데드락 방지.
+- **스냅샷 패턴**: OrderItemModel에 주문 시점의 product_id, product_name, price를 복사 저장.
 
 ---
 
@@ -91,6 +119,7 @@ sequenceDiagram
 1. 상태 전이 검증(PENDING → CANCELED)
 2. 재고 복구의 트랜잭션 일관성
 3. 소유권(owner) 확인
+4. 쿠폰이 있었던 경우 쿠폰 복원 (idempotent)
 을 검증한다.
 
 ### 시퀀스 다이어그램
@@ -99,58 +128,65 @@ sequenceDiagram
 sequenceDiagram
     actor Customer
     participant Controller as OrderV1Controller
+    participant Facade as OrderFacade
+    participant OrderApp as OrderApp
     participant OrderService as OrderService
-    participant OrderReader as OrderReader
-    participant ProductRepo as ProductRepository
+    participant CouponApp as CouponApp
 
     Customer->>Controller: PATCH /api/v1/orders/{orderId}/cancel
-    Controller->>OrderService: cancelOrder(memberId, orderId)
+    Controller->>Facade: cancelOrder(memberId, orderId)
+
+    activate Facade
+    Note over Facade: @Transactional 시작
+
+    Facade->>OrderApp: cancelOrder(memberId, orderId)
+    OrderApp->>OrderService: cancelOrder(memberId, orderId)
 
     activate OrderService
-    Note over OrderService: @Transactional 시작
-
     %% 주문 조회
-    OrderService->>OrderReader: getOrThrow(orderId)
-    OrderReader-->>OrderService: OrderModel (or 404)
+    OrderService->>OrderService: findByOrderId(orderId) or 404
 
     %% 소유권 확인
     OrderService->>OrderService: order.isOwner(memberId)
     alt owner mismatch
-        OrderService-->>Controller: CoreException(403 Forbidden)
-        Controller-->>Customer: 403 Forbidden
+        OrderService-->>Facade: CoreException(403 Forbidden)
+        Facade-->>Controller: 403 Forbidden
     else owner ok
 
-        %% 상태 확인 (멱등 포함)
         alt status == CANCELED
             Note over OrderService: 멱등 성공 (재고 복구 생략)
-            OrderService-->>Controller: OrderModel (already canceled)
-            Controller-->>Customer: 200 OK
         else status == PENDING
-
-            %% 상태 전이
             OrderService->>OrderService: order.cancel()<br/>status = CANCELED
 
-            %% 재고 복구
             loop each orderItem
-                OrderService->>ProductRepo: increaseStock(productId, quantity)<br/>UPDATE products SET stock_quantity += :qty
+                OrderService->>OrderService: increaseStock(productId, qty)<br/>UPDATE products SET stock += qty
             end
-
-            OrderService-->>Controller: OrderModel (CANCELED)
-            Controller-->>Customer: 200 OK
-
         end
+
     end
 
-    Note over OrderService: @Transactional 커밋
+    OrderService-->>OrderApp: OrderModel
     deactivate OrderService
+    OrderApp-->>Facade: OrderInfo
+
+    %% 쿠폰 복원 (주문에 쿠폰이 있었던 경우)
+    alt refUserCouponId != null
+        Facade->>CouponApp: restoreUserCoupon(refUserCouponId)
+        Note over CouponApp: UPDATE user_coupons<br/>SET status='AVAILABLE'<br/>WHERE id=? AND status='USED'<br/>(idempotent: rowsAffected==0이면 무시)
+    end
+
+    Note over Facade: @Transactional 커밋
+    deactivate Facade
+
+    Facade-->>Controller: OrderInfo
+    Controller-->>Customer: 200 OK {orderId, status: CANCELED}
 ```
 
 ### 해석
-- **트랜잭션 경계**: 상태 전이와 재고 복구가 단일 트랜잭션으로 묶여, 부분 성공을 방지한다.
-- **멱등성**: 이미 CANCELED 상태면 재고 복구 없이 200 OK 성공 처리 (중복 복구 방지).
-- **책임 분리**: OrderReader는 orderId 기반 조회 + 404 처리, OrderService는 상태 전이 + 재고 복구 오케스트레이션.
-- **소유권 확인**: `order.isOwner(memberId)`로 타 유저 접근 차단 (도메인 행위 메서드).
-- **재고 복구**: 단순 증가 UPDATE (비관적 락 불필요 - 복구는 충돌 없음).
+- **트랜잭션 경계**: 상태 전이, 재고 복구, 쿠폰 복원이 단일 트랜잭션으로 묶여 부분 성공을 방지한다.
+- **멱등성**: 이미 CANCELED 상태면 재고·쿠폰 복구 없이 성공 처리 (중복 복구 방지). 쿠폰 복원도 조건부 UPDATE로 멱등 처리.
+- **재고 복구**: 단순 증가 UPDATE (비관적 락 불필요 — 복구는 충돌 없음).
+- **쿠폰 복원**: 조건부 UPDATE(`WHERE status = 'USED'`)로 이중 복원 방지.
 
 ---
 
@@ -169,14 +205,14 @@ sequenceDiagram
 sequenceDiagram
     actor Customer
     participant Controller as LikeV1Controller
-    participant LikeFacade as LikeFacade
+    participant LikeApp as LikeApp
     participant LikeService as LikeService
     participant ProductRepo as ProductRepository
     participant LikeRepo as LikeRepository
 
-    Customer->>Controller: POST /api/v1/likes<br/>{memberId, productId}
-    Controller->>LikeFacade: addLike(memberId, productId)
-    LikeFacade->>LikeService: addLike(memberId, productId)
+    Customer->>Controller: POST /api/v1/products/{productId}/likes<br/>{memberId}
+    Controller->>LikeApp: addLike(memberId, productId)
+    LikeApp->>LikeService: addLike(memberId, productId)
 
     activate LikeService
     Note over LikeService: @Transactional 시작
@@ -191,7 +227,7 @@ sequenceDiagram
     alt already liked (existing)
         LikeRepo-->>LikeService: LikeModel (existing)
         Note over LikeService: 멱등 성공 (INSERT 생략)
-        LikeService-->>LikeFacade: LikeModel (existing)
+        LikeService-->>LikeApp: LikeModel (existing)
     else not found → try insert
         LikeRepo-->>LikeService: empty
         LikeService->>LikeRepo: save(LikeModel.create(memberId, productId))
@@ -200,17 +236,17 @@ sequenceDiagram
             Note over LikeService: 동시성 fallback:<br/>UNIQUE 위반 catch → 재조회
             LikeService->>LikeRepo: findByRefMemberIdAndRefProductId(...)
             LikeRepo-->>LikeService: LikeModel (existing)
-            LikeService-->>LikeFacade: LikeModel (existing)
+            LikeService-->>LikeApp: LikeModel (existing)
         else insert success
             LikeRepo-->>LikeService: LikeModel (new)
-            LikeService-->>LikeFacade: LikeModel (new)
+            LikeService-->>LikeApp: LikeModel (new)
         end
     end
 
     Note over LikeService: @Transactional 커밋
     deactivate LikeService
 
-    LikeFacade-->>Controller: LikeInfo
+    LikeApp-->>Controller: LikeInfo
     Controller-->>Customer: 200 OK {likeId, memberId, productId}
 ```
 
@@ -220,23 +256,21 @@ sequenceDiagram
 sequenceDiagram
     actor Customer
     participant Controller as LikeV1Controller
-    participant LikeFacade as LikeFacade
+    participant LikeApp as LikeApp
     participant LikeService as LikeService
     participant ProductRepo as ProductRepository
     participant LikeRepo as LikeRepository
 
-    Customer->>Controller: DELETE /api/v1/likes<br/>{memberId, productId}
-    Controller->>LikeFacade: removeLike(memberId, productId)
-    LikeFacade->>LikeService: removeLike(memberId, productId)
+    Customer->>Controller: DELETE /api/v1/products/{productId}/likes<br/>{memberId}
+    Controller->>LikeApp: removeLike(memberId, productId)
+    LikeApp->>LikeService: removeLike(memberId, productId)
 
     activate LikeService
     Note over LikeService: @Transactional 시작
 
-    %% 상품 존재 확인
     LikeService->>ProductRepo: findByProductId(productId)
     ProductRepo-->>LikeService: ProductModel (or 404)
 
-    %% 좋아요 조회 후 삭제 (멱등성 - 없어도 성공)
     LikeService->>LikeRepo: findByRefMemberIdAndRefProductId(refMemberId, refProductId)
     alt found
         LikeRepo-->>LikeService: LikeModel
@@ -248,15 +282,15 @@ sequenceDiagram
     Note over LikeService: @Transactional 커밋
     deactivate LikeService
 
-    LikeFacade-->>Controller: void
+    LikeApp-->>Controller: void
     Controller-->>Customer: 204 No Content
 ```
 
 ### 해석
 - **락 불필요**: 좋아요는 경합이 낮고, 중복 1건은 비즈니스적으로 치명적이지 않다. DB UNIQUE 제약이 최종 방어선.
 - **멱등성**: 추가 시 선조회로 중복 확인, UNIQUE 위반 시 catch 후 재조회로 성공 처리. 취소 시 없어도 성공.
-- **Reader 미사용**: LikeService가 ProductRepository를 직접 사용하여 상품 존재 확인 (Reader 패턴 제거됨).
-- **Facade 역할**: LikeFacade는 LikeService를 위임 호출하고 LikeInfo로 변환하는 thin facade.
+- **App 직접 사용**: 좋아요 추가/취소는 단일 도메인(LikeApp)이므로 Facade 없이 Controller → LikeApp 직접 호출.
+- **LikeFacade 별도**: `내 좋아요 목록 조회(getMyLikedProducts)`는 LikeApp + ProductApp + BrandApp 조합이 필요하므로 LikeFacade 사용.
 
 ---
 
@@ -266,7 +300,7 @@ sequenceDiagram
 상품 목록 조회는 **soft delete 필터링**, **정렬 옵션**, **좋아요 수 집계**의 성능 트레이드오프를 보여준다. 이 다이어그램은:
 1. deleted_at 필터가 항상 적용되는지
 2. likes_desc 정렬 시 LEFT JOIN + COUNT 집계
-3. Brand 정보와 좋아요 수 enrichment 흐름
+3. Brand 정보와 좋아요 수 enrichment 흐름 (ProductFacade → ProductApp + BrandApp)
 을 검증한다.
 
 ### 시퀀스 다이어그램
@@ -276,7 +310,8 @@ sequenceDiagram
     actor Customer
     participant Controller as ProductV1Controller
     participant ProductFacade as ProductFacade
-    participant ProductService as ProductService
+    participant ProductApp as ProductApp
+    participant BrandApp as BrandApp
     participant ProductRepo as ProductRepository
     participant BrandRepo as BrandRepository
 
@@ -284,51 +319,134 @@ sequenceDiagram
     Controller->>ProductFacade: getProducts(brandId, sortBy, pageable)
 
     activate ProductFacade
-    Note over ProductFacade: @Transactional(readOnly=true)
 
-    ProductFacade->>ProductService: getProducts(brandId, sortBy, pageable)
-    ProductService->>ProductRepo: findProducts(refBrandId, sortBy, pageable)
+    ProductFacade->>ProductApp: getProducts(brandId, sortBy, pageable)
+    ProductApp->>ProductRepo: findProducts(refBrandId, sortBy, pageable)
 
     Note over ProductRepo: Native SQL:<br/>SELECT * FROM products<br/>WHERE deleted_at IS NULL<br/>[AND ref_brand_id = :brandId]<br/>[LEFT JOIN likes GROUP BY id<br/>ORDER BY COUNT(l.id) DESC]
 
-    ProductRepo-->>ProductService: Page<ProductModel>
-    ProductService-->>ProductFacade: Page<ProductModel>
+    ProductRepo-->>ProductApp: Page<ProductModel>
+    ProductApp-->>ProductFacade: Page<ProductInfo>
 
     %% enrichment (Brand 정보 + 좋아요 수)
-    loop each ProductModel
-        ProductFacade->>BrandRepo: findById(refBrandId)
-        BrandRepo-->>ProductFacade: BrandModel
-        ProductFacade->>ProductRepo: countLikes(productId)
-        ProductRepo-->>ProductFacade: long likesCount
-        ProductFacade->>ProductFacade: ProductInfo.from(product, brand, likesCount)
+    loop each ProductInfo
+        ProductFacade->>BrandApp: getBrandByRefId(refBrandId)
+        BrandApp->>BrandRepo: findById(id)
+        BrandRepo-->>BrandApp: BrandModel
+        BrandApp-->>ProductFacade: BrandInfo
+
+        ProductFacade->>ProductApp: countLikes(productId)
+        ProductApp->>ProductRepo: countLikes(productId)
+        ProductRepo-->>ProductApp: long likesCount
+        ProductApp-->>ProductFacade: likesCount
+
+        ProductFacade->>ProductFacade: product.enrich(brand, likesCount)
     end
 
     deactivate ProductFacade
 
     ProductFacade-->>Controller: Page<ProductInfo>
-    Controller-->>Customer: 200 OK<br/>{products: [...], page, size, totalElements}
+    Controller-->>Customer: 200 OK {products: [...], page, size, totalElements}
 ```
 
 ### 해석
+- **Facade Enrichment**: ProductFacade가 ProductApp(상품 조회+좋아요 수) + BrandApp(브랜드 조회)을 조합. 2개의 App을 사용하므로 Facade 사용 기준 충족.
 - **Soft Delete 필터**: 모든 쿼리에 `deleted_at IS NULL`이 포함되어 삭제된 상품을 제외.
-- **정렬 옵션**:
-  - **latest** (기본): `ORDER BY updated_at DESC`
-  - **price_asc**: `ORDER BY price ASC`
-  - **likes_desc**: `LEFT JOIN likes ON p.id = l.ref_product_id GROUP BY p.id ORDER BY COUNT(l.id) DESC`
-- **Native Query 사용 이유**: VO 타입 (`ProductId`, `RefBrandId` 등)이 JPQL에서 처리 어려워 Native Query 사용.
-- **Enrichment**: Facade에서 각 상품별 Brand 정보 + 좋아요 수를 추가로 조회하여 ProductInfo 구성 (N+1 주의 - 병목 시 단일 쿼리로 통합 고려).
+- **정렬 옵션**: latest (updated_at DESC), price_asc, likes_desc (LEFT JOIN + COUNT).
 - **성능 리스크**: likes_desc + COUNT는 상품/좋아요 수 증가 시 병목 가능 → 모니터링 후 Phase 2 (like_count 컬럼) 전환.
+
+---
+
+## 5. 쿠폰 발급 (POST /api/v1/coupons/{couponId}/issue)
+
+### 검증 목적
+쿠폰 발급의 핵심은 **중복 발급 방지**이다. 이 다이어그램은:
+1. 삭제/만료 검증 순서
+2. 선조회로 중복 발급 1차 확인
+3. DB UNIQUE 제약이 동시 요청 시 최종 방어선이 되는 흐름
+을 검증한다.
+
+### 시퀀스 다이어그램
+
+```mermaid
+sequenceDiagram
+    actor Customer
+    participant Controller as CouponV1Controller
+    participant CouponApp as CouponApp
+    participant CouponService as CouponService
+    participant TemplateRepo as CouponTemplateRepository
+    participant UserCouponRepo as UserCouponRepository
+
+    Customer->>Controller: POST /api/v1/coupons/{couponId}/issue<br/>{memberId}
+    Controller->>CouponApp: issueUserCoupon(couponId, memberId)
+
+    activate CouponApp
+    Note over CouponApp: @Transactional 시작
+
+    CouponApp->>CouponService: issueUserCoupon(couponId, memberId)
+
+    activate CouponService
+
+    %% 일반 조회 (락 없음)
+    CouponService->>TemplateRepo: findById(couponTemplateId)
+    TemplateRepo-->>CouponService: CouponTemplateModel (or 404)
+
+    %% 삭제 여부 확인
+    alt isDeleted
+        CouponService-->>CouponApp: CoreException(404 NOT_FOUND)
+    end
+
+    %% 만료 여부 확인
+    alt isExpired
+        CouponService-->>CouponApp: CoreException(400 BAD_REQUEST)
+    end
+
+    %% 중복 발급 선조회 확인
+    CouponService->>UserCouponRepo: existsByRefMemberIdAndRefCouponTemplateId(memberId, templateId)
+    alt already issued
+        CouponService-->>CouponApp: CoreException(409 CONFLICT)
+    end
+
+    %% 발급 처리 (UNIQUE 제약이 최종 방어선)
+    CouponService->>UserCouponRepo: save(UserCouponModel.create(memberId, templateId))
+
+    alt DataIntegrityViolationException (동시 요청 시 UNIQUE 위반)
+        Note over CouponService: DB UNIQUE(ref_member_id, ref_coupon_template_id) catch
+        CouponService-->>CouponApp: CoreException(409 CONFLICT)
+    else 정상 저장
+        UserCouponRepo-->>CouponService: UserCouponModel
+    end
+
+    deactivate CouponService
+
+    %% Info 변환을 위한 template 재조회 (expiredAt 필요)
+    CouponApp->>TemplateRepo: findById(templateId)
+    TemplateRepo-->>CouponApp: CouponTemplateModel
+
+    Note over CouponApp: @Transactional 커밋
+    deactivate CouponApp
+
+    CouponApp-->>Controller: UserCouponInfo
+    Controller-->>Customer: 201 Created {id, status: AVAILABLE}
+```
+
+### 해석
+- **수량 제한 없음**: 쿠폰 템플릿에 totalQuantity/issuedQuantity 필드가 없다. 같은 쿠폰을 여러 명이 발급받을 수 있으나, 동일 사용자가 중복 발급받는 것만 방지한다.
+- **DB UNIQUE 제약**: `uk_user_coupon_member_template(ref_member_id, ref_coupon_template_id)` — 동시 요청 시 중복 발급을 DB 레벨에서 최종 방어. 선조회는 1차 확인, UNIQUE 위반 catch가 2차 방어.
+- **트랜잭션 경계**: `CouponApp@Transactional`이 검증 → 저장을 단일 트랜잭션으로 묶는다.
 
 ---
 
 ## 다이어그램 요약
 
-| 유스케이스 | 핵심 검증 포인트 | 트랜잭션 범위 | 동시성 전략 |
-|-----------|-----------------|--------------|------------|
-| 주문 생성 | 재고 차감 동시성, 스냅샷 저장 | Service (@Transactional) | 비관적 락 + productId 정렬 |
-| 주문 취소 | 상태 전이, 재고 복구, 멱등성 | Service (@Transactional) | 없음 (복구는 충돌 없음) |
-| 좋아요 추가/취소 | UNIQUE 제약, 멱등성 | Service (@Transactional) | DB UNIQUE 제약 |
-| 상품 목록 조회 | Soft Delete 필터, 정렬/집계 성능 | 없음 (읽기 전용) | 없음 |
+| 유스케이스 | 레이어 진입점 | 트랜잭션 범위 | 동시성 전략 |
+|-----------|-------------|--------------|------------|
+| 주문 생성 | OrderFacade (쿠폰 있으면) / OrderApp (쿠폰 없으면) | Facade @Transactional | 재고: 조건부 UPDATE + productId 정렬 / 쿠폰: 조건부 UPDATE |
+| 주문 취소 | OrderFacade | Facade @Transactional | 없음 (복구는 충돌 없음) / 쿠폰 복원: 조건부 UPDATE |
+| 좋아요 추가/취소 | LikeApp | Service @Transactional | DB UNIQUE 제약 + catch |
+| 상품 목록 조회 | ProductFacade | 없음 (읽기 전용) | 없음 |
+| 쿠폰 발급 | CouponApp | App @Transactional | DB UNIQUE 제약 + catch |
+| 쿠폰 사용 (주문 내) | OrderFacade → CouponApp | Facade @Transactional | 조건부 UPDATE |
 
 ---
 
