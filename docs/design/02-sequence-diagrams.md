@@ -13,8 +13,8 @@
 **동시성 전략 요약**:
 | 도메인 | 전략 | 근거 |
 |--------|------|------|
-| 재고 (stock) | 비관적 락 (`SELECT ... FOR UPDATE`) | 높은 경합, 과판매 절대 불가 |
-| 쿠폰 발급 (coupon issue) | 비관적 락 (`SELECT ... FOR UPDATE`) | 수량 제한, 초과 발급 절대 불가 |
+| 재고 (stock) | 조건부 UPDATE + productId ASC 정렬 | 원자적 차감(`WHERE stock_quantity >= qty`), 정렬로 데드락 방지 |
+| 쿠폰 발급 (coupon issue) | DB UNIQUE 제약 + 예외 catch | 수량 제한 없음, 중복 발급만 방지 |
 | 쿠폰 사용 (coupon use) | 조건부 UPDATE (`WHERE status = 'AVAILABLE'`) | 상태 기반 원자적 변경, 락 없이 안전 |
 | 좋아요 (like) | DB UNIQUE 제약 + 예외 catch | 낮은 경합, 중복 1건은 치명적이지 않음 |
 
@@ -27,7 +27,7 @@
 1. OrderFacade가 CouponApp + OrderApp을 조합하는 크로스 도메인 오케스트레이션 흐름
 2. 쿠폰 적용 시 할인 계산 → 쿠폰 사용 처리 → 주문 생성 순서 보장
 3. productId 정렬로 데드락을 방지하는 흐름
-4. 비관적 락(`SELECT ... FOR UPDATE`)으로 재고를 안전하게 차감하는 방법
+4. 조건부 UPDATE(`WHERE stock_quantity >= qty`)로 재고를 원자적으로 차감하는 방법
 을 검증한다.
 
 ### 시퀀스 다이어그램
@@ -76,13 +76,13 @@ sequenceDiagram
     OrderService->>OrderService: sort productIds ASC
 
     loop 각 상품 (정렬된 순서)
-        OrderService->>ProductRepo: findByProductIdForUpdate(productId)
-        Note over ProductRepo: SELECT ... FOR UPDATE (비관적 락)
+        OrderService->>ProductRepo: findByProductId(productId)
         ProductRepo-->>OrderService: ProductModel (or 404)
 
-        OrderService->>OrderService: decreaseStock(qty)<br/>재고 검증 후 차감
+        OrderService->>ProductRepo: decreaseStockIfAvailable(productId, qty)
+        Note over ProductRepo: UPDATE products<br/>SET stock_quantity = stock_quantity - :qty<br/>WHERE id = :productId AND stock_quantity >= :qty<br/>(조건부 UPDATE — 원자적)
 
-        alt 재고 부족
+        alt rowsAffected == 0 (재고 부족)
             OrderService-->>Facade: CoreException(409 CONFLICT)
             Facade-->>Controller: 409 Conflict {재고 부족}
             Note over Facade: @Transactional 롤백 (쿠폰 사용도 롤백)
@@ -107,7 +107,7 @@ sequenceDiagram
 - **트랜잭션 경계**: `OrderFacade@Transactional`이 쿠폰 사용 처리부터 재고 차감·주문 저장까지 단일 트랜잭션으로 묶는다. 재고 부족 시 쿠폰 사용도 함께 롤백.
 - **크로스 도메인 Facade**: 2개 이상의 App(CouponApp + OrderApp)을 조합하므로 Facade 사용. Controller → Facade → App 패턴 준수.
 - **쿠폰 사용 전략**: 조건부 UPDATE(`WHERE status = 'AVAILABLE'`)로 락 없이 원자적 상태 변경. rowsAffected == 0 이면 이미 사용/불가 상태.
-- **비관적 락**: 재고 차감은 `SELECT ... FOR UPDATE`로 행 잠금 후 차감. 데드락 방지를 위해 productId 오름차순 정렬.
+- **재고 조건부 UPDATE**: `decreaseStockIfAvailable`이 `WHERE stock_quantity >= qty` 조건으로 차감과 검증을 원자적으로 실행. productId 오름차순 정렬로 데드락 방지.
 - **스냅샷 패턴**: OrderItemModel에 주문 시점의 product_id, product_name, price를 복사 저장.
 
 ---
@@ -360,11 +360,11 @@ sequenceDiagram
 ## 5. 쿠폰 발급 (POST /api/v1/coupons/{couponId}/issue)
 
 ### 검증 목적
-쿠폰 발급의 핵심은 **수량 초과 발급 방지**와 **중복 발급 방지**이다. 이 다이어그램은:
-1. 비관적 락(`SELECT ... FOR UPDATE`)으로 수량 경합을 방지하는 흐름
-2. 중복 발급 방지 (DB UNIQUE 제약 + 선조회)
-3. 만료/삭제 검증 순서
-를 검증한다.
+쿠폰 발급의 핵심은 **중복 발급 방지**이다. 이 다이어그램은:
+1. 삭제/만료 검증 순서
+2. 선조회로 중복 발급 1차 확인
+3. DB UNIQUE 제약이 동시 요청 시 최종 방어선이 되는 흐름
+을 검증한다.
 
 ### 시퀀스 다이어그램
 
@@ -387,9 +387,8 @@ sequenceDiagram
 
     activate CouponService
 
-    %% 비관적 락으로 템플릿 조회 (수량 경합 방지)
-    CouponService->>TemplateRepo: findByCouponTemplateIdForUpdate(couponTemplateId)
-    Note over TemplateRepo: SELECT ... FOR UPDATE<br/>(비관적 락 획득)
+    %% 일반 조회 (락 없음)
+    CouponService->>TemplateRepo: findById(couponTemplateId)
     TemplateRepo-->>CouponService: CouponTemplateModel (or 404)
 
     %% 삭제 여부 확인
@@ -402,41 +401,39 @@ sequenceDiagram
         CouponService-->>CouponApp: CoreException(400 BAD_REQUEST)
     end
 
-    %% 수량 확인
-    alt issuedQuantity >= totalQuantity
-        CouponService-->>CouponApp: CoreException(409 CONFLICT)
-    end
-
-    %% 중복 발급 확인
+    %% 중복 발급 선조회 확인
     CouponService->>UserCouponRepo: existsByRefMemberIdAndRefCouponTemplateId(memberId, templateId)
     alt already issued
         CouponService-->>CouponApp: CoreException(409 CONFLICT)
     end
 
-    %% 발급 처리
-    CouponService->>CouponService: template.incrementIssuedQuantity()
-    CouponService->>TemplateRepo: save(template)
-
+    %% 발급 처리 (UNIQUE 제약이 최종 방어선)
     CouponService->>UserCouponRepo: save(UserCouponModel.create(memberId, templateId))
-    UserCouponRepo-->>CouponService: UserCouponModel
+
+    alt DataIntegrityViolationException (동시 요청 시 UNIQUE 위반)
+        Note over CouponService: DB UNIQUE(ref_member_id, ref_coupon_template_id) catch
+        CouponService-->>CouponApp: CoreException(409 CONFLICT)
+    else 정상 저장
+        UserCouponRepo-->>CouponService: UserCouponModel
+    end
 
     deactivate CouponService
 
     %% Info 변환을 위한 template 재조회 (expiredAt 필요)
-    CouponApp->>TemplateRepo: findByPkId(templateId)
+    CouponApp->>TemplateRepo: findById(templateId)
     TemplateRepo-->>CouponApp: CouponTemplateModel
 
-    Note over CouponApp: @Transactional 커밋 (비관적 락 해제)
+    Note over CouponApp: @Transactional 커밋
     deactivate CouponApp
 
     CouponApp-->>Controller: UserCouponInfo
-    Controller-->>Customer: 201 Created {userCouponId, status: AVAILABLE}
+    Controller-->>Customer: 201 Created {id, status: AVAILABLE}
 ```
 
 ### 해석
-- **비관적 락 선택 이유**: 쿠폰 발급은 수량 제한이 핵심 비즈니스 규칙이고, 초과 발급이 절대 허용되지 않는다. 낙관적 락은 충돌 시 재시도가 필요하여 UX가 나쁘고, 조건부 UPDATE 방식은 issuedQuantity를 원자적으로 증가시키기 어렵다.
-- **DB UNIQUE 제약**: `uk_user_coupon_member_template(ref_member_id, ref_coupon_template_id)` — 동시 요청 시 중복 발급을 DB 레벨에서 최종 방어.
-- **트랜잭션 경계**: `CouponApp@Transactional`이 비관적 락 획득 → 검증 → 수량 증가 → 저장을 단일 트랜잭션으로 묶는다. 커밋 시 비관적 락 해제.
+- **수량 제한 없음**: 쿠폰 템플릿에 totalQuantity/issuedQuantity 필드가 없다. 같은 쿠폰을 여러 명이 발급받을 수 있으나, 동일 사용자가 중복 발급받는 것만 방지한다.
+- **DB UNIQUE 제약**: `uk_user_coupon_member_template(ref_member_id, ref_coupon_template_id)` — 동시 요청 시 중복 발급을 DB 레벨에서 최종 방어. 선조회는 1차 확인, UNIQUE 위반 catch가 2차 방어.
+- **트랜잭션 경계**: `CouponApp@Transactional`이 검증 → 저장을 단일 트랜잭션으로 묶는다.
 
 ---
 
@@ -444,11 +441,11 @@ sequenceDiagram
 
 | 유스케이스 | 레이어 진입점 | 트랜잭션 범위 | 동시성 전략 |
 |-----------|-------------|--------------|------------|
-| 주문 생성 | OrderFacade (쿠폰 있으면) / OrderApp (쿠폰 없으면) | Facade @Transactional | 재고: 비관적 락 + productId 정렬 / 쿠폰: 조건부 UPDATE |
+| 주문 생성 | OrderFacade (쿠폰 있으면) / OrderApp (쿠폰 없으면) | Facade @Transactional | 재고: 조건부 UPDATE + productId 정렬 / 쿠폰: 조건부 UPDATE |
 | 주문 취소 | OrderFacade | Facade @Transactional | 없음 (복구는 충돌 없음) / 쿠폰 복원: 조건부 UPDATE |
 | 좋아요 추가/취소 | LikeApp | Service @Transactional | DB UNIQUE 제약 + catch |
 | 상품 목록 조회 | ProductFacade | 없음 (읽기 전용) | 없음 |
-| 쿠폰 발급 | CouponApp | App @Transactional | 비관적 락 (FOR UPDATE) |
+| 쿠폰 발급 | CouponApp | App @Transactional | DB UNIQUE 제약 + catch |
 | 쿠폰 사용 (주문 내) | OrderFacade → CouponApp | Facade @Transactional | 조건부 UPDATE |
 
 ---

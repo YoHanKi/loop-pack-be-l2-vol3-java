@@ -105,25 +105,21 @@ classDiagram
     class CouponTemplateModel {
         <<Entity>>
         +Long id
-        +CouponTemplateId couponTemplateId
         +String name
         +CouponType type
         +BigDecimal value
         +BigDecimal minOrderAmount
         +ZonedDateTime expiredAt
-        +int totalQuantity
-        +int issuedQuantity
         +create(name, type, value, ...) CouponTemplateModel$
-        +incrementIssuedQuantity()
         +isExpired() boolean
-        +isIssuable() boolean
+        +isDeleted() boolean
         +markAsDeleted()
+        +update(name, value, ...)
     }
 
     class UserCouponModel {
         <<Entity>>
         +Long id
-        +UserCouponId userCouponId
         +Long refMemberId
         +Long refCouponTemplateId
         +UserCouponStatus status
@@ -607,7 +603,7 @@ classDiagram
 #### 해석
 - **OrderFacade 역할**: OrderApp + CouponApp 2개 App 조합. 주문 생성 시 쿠폰 검증→사용→주문 저장 순서 보장. 주문 취소 시 재고 복구→쿠폰 복원 순서 보장.
 - **OrderApp 조회**: 단순 조회(getMyOrders)는 OrderApp에서 OrderRepository 직접 호출 허용.
-- **재고 차감**: OrderService가 ProductRepository를 직접 의존하여 `SELECT ... FOR UPDATE` 후 재고 차감. 타 도메인 Repository 직접 사용은 Service에서 허용.
+- **재고 차감**: OrderService가 ProductRepository의 `decreaseStockIfAvailable`을 직접 호출. 조건부 UPDATE(`WHERE stock_quantity >= qty`)로 원자적 차감. 타 도메인 Repository 직접 사용은 Service에서 허용.
 - **OrderItem cascade**: OrderModel에 cascade ALL 설정으로 OrderJpaRepository가 order_items도 함께 관리.
 - **getFinalAmount()**: `originalAmount - discountAmount` (0 미만이면 0).
 
@@ -660,23 +656,20 @@ classDiagram
     class CouponTemplateInfo {
         <<Info record>>
         +Long id
-        +String couponTemplateId
         +String name
         +CouponType type
         +BigDecimal value
         +BigDecimal minOrderAmount
         +ZonedDateTime expiredAt
-        +int totalQuantity
-        +int issuedQuantity
     }
     class UserCouponInfo {
         <<Info record>>
         +Long id
-        +String userCouponId
         +Long refMemberId
         +Long refCouponTemplateId
         +String status
-        +boolean expired
+        +ZonedDateTime createdAt
+        %% status: AVAILABLE | USED | EXPIRED (동적 계산)
     }
 
 %% Domain
@@ -693,16 +686,14 @@ classDiagram
     }
     class CouponTemplateRepository {
         <<interface>>
-        +findByCouponTemplateId(id) Optional
-        +findByCouponTemplateIdForUpdate(id) Optional
-        +findByPkId(id) Optional
+        +findById(id) Optional
         +findAll(pageable) Page
         +save(template) CouponTemplateModel
     }
     class UserCouponRepository {
         <<interface>>
         +save(model) UserCouponModel
-        +findByUserCouponId(id) Optional
+        +findById(id) Optional
         +findByRefMemberId(memberId) List
         +findByRefCouponTemplateId(templateId) List
         +existsByRefMemberIdAndRefCouponTemplateId(memberId, templateId) boolean
@@ -711,28 +702,28 @@ classDiagram
     }
     class CouponTemplateModel {
         <<Entity>>
-        +CouponTemplateId couponTemplateId
+        +String name
         +CouponType type
         +BigDecimal value
-        +int totalQuantity
-        +int issuedQuantity
-        +incrementIssuedQuantity()
-        +isIssuable() boolean
+        +BigDecimal minOrderAmount
+        +ZonedDateTime expiredAt
+        +isExpired() boolean
+        +isDeleted() boolean
+        +markAsDeleted()
     }
     class UserCouponModel {
         <<Entity>>
-        +UserCouponId userCouponId
         +Long refMemberId
         +Long refCouponTemplateId
         +UserCouponStatus status
         +int version @Version
         +isAvailable() boolean
+        +isExpired(expiredAt) boolean
     }
 
 %% Infrastructure
     class CouponTemplateRepositoryImpl {
         <<RepositoryAdapter @Component>>
-        +findByCouponTemplateIdForUpdate() @Lock(PESSIMISTIC_WRITE)
     }
     class CouponTemplateJpaRepository {
         <<JpaRepository>>
@@ -765,9 +756,9 @@ classDiagram
 
 #### 해석
 - **CouponApp 단독**: 쿠폰 도메인은 단일 App으로 충분. 관리자/유저 컨트롤러 모두 CouponApp 직접 호출.
-- **비관적 락**: `findByCouponTemplateIdForUpdate`는 `@Lock(PESSIMISTIC_WRITE)` 적용. 발급 수량 초과 방지.
+- **쿠폰 발급 전략**: 수량 제한 없음. DB UNIQUE(`ref_member_id, ref_coupon_template_id`) 제약 + `DataIntegrityViolationException` catch로 중복 발급 방지.
 - **조건부 UPDATE**: `useIfAvailable`/`restoreIfUsed`는 `@Modifying @Query`로 상태 조건부 UPDATE. 원자적 상태 변경.
-- **`@Version` 컬럼**: UserCouponModel은 낙관적 락용 version 필드 보유 (직접 사용은 아님, 조건부 UPDATE와 함께 version 증가).
+- **`@Version` 컬럼**: UserCouponModel은 version 필드 보유. 조건부 UPDATE 시 `version = version + 1` 증가.
 - **CouponApp.calculateDiscount**: 조회만 하므로 `@Transactional(readOnly = true)`. CouponService.calculateDiscount()에 위임.
 
 ---
@@ -838,18 +829,6 @@ classDiagram
         +Long value
         %% > 0
     }
-    class CouponTemplateId {
-        <<record>>
-        +String value
-        +generate() CouponTemplateId$
-        %% UUID 형식
-    }
-    class UserCouponId {
-        <<record>>
-        +String value
-        +generate() UserCouponId$
-        %% UUID 형식
-    }
     class OrderStatus {
         <<enumeration>>
         PENDING
@@ -872,7 +851,7 @@ classDiagram
 - **record 타입**: 불변 + Compact Constructor 검증으로 잘못된 값 생성 차단.
 - **Converter 패턴**: 각 VO에 대응하는 JPA Converter가 DB 저장/조회 시 원시타입 ↔ VO 변환.
 - **FK 참조 VO**: `RefBrandId(Long)`, `RefMemberId(Long)`, `RefProductId(Long)` — 외래키를 VO로 래핑.
-- **UUID VO**: `OrderId`, `OrderItemId`, `CouponTemplateId`, `UserCouponId` — UUID 기반으로 정적 `generate()` 메서드 제공.
+- **UUID VO**: `OrderId`, `OrderItemId` — UUID 기반으로 정적 `generate()` 메서드 제공. 쿠폰 도메인은 UUID VO 없이 `Long id` (Auto Increment) 사용.
 - **도메인 공통 VO**: `RefMemberId`, `RefProductId`, `RefBrandId`는 `domain.common.vo` 패키지에 통합 관리.
 
 ---
@@ -971,12 +950,12 @@ flowchart LR
 
 ### 2. 도메인 모델 설계
 - **정적 팩토리**: `create()` 메서드로 생성 (생성자 private/protected)
-- **도메인 행위**: `cancel()`, `decreaseStock()`, `isOwner()`, `isIssuable()` 등 도메인 메서드 제공
+- **도메인 행위**: `cancel()`, `isOwner()`, `isExpired()`, `isAvailable()` 등 도메인 메서드 제공
 - **불변 VO**: record 타입, Compact Constructor 검증, Converter로 DB 연동
 
 ### 3. 동시성 제어
-- **재고**: 비관적 락 (`SELECT ... FOR UPDATE`) — 경합 높음, 과판매 불가
-- **쿠폰 발급**: 비관적 락 (`SELECT ... FOR UPDATE`) — 수량 제한 초과 발급 불가
+- **재고**: 조건부 UPDATE (`WHERE stock_quantity >= qty`) + productId ASC 정렬 — 원자적 차감, 데드락 방지
+- **쿠폰 발급**: DB UNIQUE 제약 + `DataIntegrityViolationException` catch — 수량 제한 없음, 중복 발급만 방지
 - **쿠폰 사용/복원**: 조건부 UPDATE (`WHERE status = '...'`) — 락 없이 원자적 상태 변경
 - **좋아요**: DB UNIQUE 제약 + catch — 경합 낮음, 중복 1건 허용 범위
 
