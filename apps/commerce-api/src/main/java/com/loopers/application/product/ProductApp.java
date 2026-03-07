@@ -23,6 +23,7 @@ public class ProductApp {
 
     private final ProductService productService;
     private final ProductRepository productRepository;
+    private final ProductCacheStore productCacheStore;
 
     @Transactional
     public ProductInfo createProduct(String productId, String brandId, String productName, BigDecimal price, int stockQuantity) {
@@ -30,12 +31,15 @@ public class ProductApp {
         return ProductInfo.from(product);
     }
 
-    @Cacheable(value = "product", key = "#productId")
     @Transactional(readOnly = true)
     public ProductInfo getProduct(String productId) {
-        ProductModel product = productRepository.findByProductId(new ProductId(productId))
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
-        return ProductInfo.from(product);
+        return productCacheStore.get(productId).orElseGet(() -> {
+            ProductModel product = productRepository.findByProductId(new ProductId(productId))
+                    .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 상품이 존재하지 않습니다."));
+            ProductInfo info = ProductInfo.from(product);
+            productCacheStore.put(productId, info);
+            return info;
+        });
     }
 
     @Caching(evict = {
