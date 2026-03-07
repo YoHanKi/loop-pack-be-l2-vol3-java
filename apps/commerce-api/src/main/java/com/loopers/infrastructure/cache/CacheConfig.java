@@ -1,4 +1,4 @@
-package com.loopers.config;
+package com.loopers.infrastructure.cache;
 
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;

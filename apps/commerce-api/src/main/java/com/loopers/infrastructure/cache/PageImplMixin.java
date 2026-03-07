@@ -1,4 +1,4 @@
-package com.loopers.config;
+package com.loopers.infrastructure.cache;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
