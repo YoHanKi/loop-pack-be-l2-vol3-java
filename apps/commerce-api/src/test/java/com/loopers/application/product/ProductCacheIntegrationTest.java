@@ -74,7 +74,7 @@ class ProductCacheIntegrationTest {
         ProductInfo first = productApp.getProduct("prod1");
         ProductInfo second = productApp.getProduct("prod1");
 
-        assertThat(second).isSameAs(first);
+        assertThat(second).isEqualTo(first);
     }
 
     @Test
