@@ -7,6 +7,8 @@ import com.loopers.domain.product.vo.ProductId;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
@@ -27,6 +29,7 @@ public class ProductApp {
         return ProductInfo.from(product);
     }
 
+    @Cacheable(value = "product", key = "#productId")
     @Transactional(readOnly = true)
     public ProductInfo getProduct(String productId) {
         ProductModel product = productRepository.findByProductId(new ProductId(productId))
@@ -34,12 +37,14 @@ public class ProductApp {
         return ProductInfo.from(product);
     }
 
+    @CacheEvict(value = "product", key = "#productId")
     @Transactional
     public ProductInfo updateProduct(String productId, String productName, BigDecimal price, int stockQuantity) {
         ProductModel product = productService.updateProduct(productId, productName, price, stockQuantity);
         return ProductInfo.from(product);
     }
 
+    @CacheEvict(value = "product", key = "#productId")
     @Transactional
     public void deleteProduct(String productId) {
         productService.deleteProduct(productId);
