@@ -1,10 +1,15 @@
 package com.loopers.infrastructure.product;
 
+import com.loopers.domain.common.vo.RefBrandId;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.product.QProductModel;
 import com.loopers.domain.product.vo.ProductId;
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
@@ -16,6 +21,7 @@ import java.util.Optional;
 public class ProductRepositoryImpl implements ProductRepository {
 
     private final ProductJpaRepository productJpaRepository;
+    private final JPAQueryFactory queryFactory;
 
     @Override
     public ProductModel save(ProductModel product) {
@@ -34,12 +40,30 @@ public class ProductRepositoryImpl implements ProductRepository {
 
     @Override
     public Page<ProductModel> findProducts(Long refBrandId, String sortBy, Pageable pageable) {
-        if ("likes_desc".equals(sortBy)) {
-            return productJpaRepository.findActiveSortByLikesDesc(refBrandId, pageable);
-        } else if ("price_asc".equals(sortBy)) {
-            return productJpaRepository.findActiveSortByPriceAsc(refBrandId, pageable);
+        QProductModel product = QProductModel.productModel;
+
+        BooleanExpression condition = product.deletedAt.isNull();
+        if (refBrandId != null) {
+            condition = condition.and(product.refBrandId.eq(new RefBrandId(refBrandId)));
         }
-        return productJpaRepository.findActiveSortByLatest(refBrandId, pageable);
+
+        ProductSortCondition sortCondition = ProductSortCondition.from(sortBy);
+
+        List<ProductModel> content = queryFactory
+                .selectFrom(product)
+                .where(condition)
+                .orderBy(sortCondition.toOrderSpecifiers(product))
+                .offset(pageable.getOffset())
+                .limit(pageable.getPageSize())
+                .fetch();
+
+        Long total = queryFactory
+                .select(product.count())
+                .from(product)
+                .where(condition)
+                .fetchOne();
+
+        return new PageImpl<>(content, pageable, total == null ? 0L : total);
     }
 
     @Override

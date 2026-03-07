@@ -9,6 +9,7 @@ import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +18,7 @@ public class LikeService {
     private final LikeRepository likeRepository;
     private final ProductRepository productRepository;
 
+    @Transactional
     public LikeModel addLike(Long memberId, String productId) {
         // 상품 존재 확인
         ProductModel product = productRepository.findByProductId(new ProductId(productId))
@@ -45,6 +47,7 @@ public class LikeService {
                 });
     }
 
+    @Transactional
     public void removeLike(Long memberId, String productId) {
         // 상품 존재 확인
         ProductModel product = productRepository.findByProductId(new ProductId(productId))
