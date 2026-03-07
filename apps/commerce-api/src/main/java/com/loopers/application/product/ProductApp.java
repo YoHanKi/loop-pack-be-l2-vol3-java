@@ -9,6 +9,7 @@ import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
@@ -37,19 +38,26 @@ public class ProductApp {
         return ProductInfo.from(product);
     }
 
-    @CacheEvict(value = "product", key = "#productId")
+    @Caching(evict = {
+        @CacheEvict(value = "product",  key = "#productId"),
+        @CacheEvict(value = "products", allEntries = true)
+    })
     @Transactional
     public ProductInfo updateProduct(String productId, String productName, BigDecimal price, int stockQuantity) {
         ProductModel product = productService.updateProduct(productId, productName, price, stockQuantity);
         return ProductInfo.from(product);
     }
 
-    @CacheEvict(value = "product", key = "#productId")
+    @Caching(evict = {
+        @CacheEvict(value = "product",  key = "#productId"),
+        @CacheEvict(value = "products", allEntries = true)
+    })
     @Transactional
     public void deleteProduct(String productId) {
         productService.deleteProduct(productId);
     }
 
+    @Cacheable(value = "products", key = "#brandId + ':' + #sortBy + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     @Transactional(readOnly = true)
     public Page<ProductInfo> getProducts(String brandId, String sortBy, Pageable pageable) {
         return productService.getProducts(brandId, sortBy, pageable).map(ProductInfo::from);
