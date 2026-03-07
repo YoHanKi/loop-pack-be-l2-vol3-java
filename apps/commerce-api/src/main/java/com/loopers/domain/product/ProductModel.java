@@ -43,6 +43,9 @@ public class ProductModel extends BaseEntity {
     @Column(name = "stock_quantity", nullable = false)
     private StockQuantity stockQuantity;
 
+    @Column(name = "like_count", nullable = false)
+    private int likeCount;
+
     protected ProductModel() {}
 
     private ProductModel(String productId, Long refBrandId, String productName, BigDecimal price, int stockQuantity) {

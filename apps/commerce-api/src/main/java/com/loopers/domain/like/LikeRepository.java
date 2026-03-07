@@ -10,6 +10,7 @@ import java.util.Optional;
 public interface LikeRepository {
     LikeModel save(LikeModel like);
     Optional<LikeModel> findByRefMemberIdAndRefProductId(RefMemberId refMemberId, RefProductId refProductId);
-    void delete(LikeModel like);
+    int restoreIfDeleted(Long likeId);
+    int softDeleteIfActive(Long likeId);
     Page<LikeModel> findByRefMemberId(RefMemberId refMemberId, Pageable pageable);
 }

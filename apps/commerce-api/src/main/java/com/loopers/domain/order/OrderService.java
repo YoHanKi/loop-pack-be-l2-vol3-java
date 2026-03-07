@@ -9,6 +9,7 @@ import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +23,11 @@ public class OrderService {
     private final ProductRepository productRepository;
 
     public OrderModel createOrder(Long memberId, List<OrderItemRequest> itemRequests) {
+        return createOrder(memberId, itemRequests, BigDecimal.ZERO, null);
+    }
+
+    public OrderModel createOrder(Long memberId, List<OrderItemRequest> itemRequests,
+                                  BigDecimal discountAmount, Long refUserCouponId) {
         // 1. 중복 상품 수량 합산
         Map<String, Integer> aggregatedItems = aggregateQuantities(itemRequests);
 
@@ -55,8 +61,20 @@ public class OrderService {
         }
 
         // 4. OrderModel 생성 및 저장
-        OrderModel order = OrderModel.create(memberId, orderItems);
+        OrderModel order = OrderModel.create(memberId, orderItems, discountAmount, refUserCouponId);
         return orderRepository.save(order);
+    }
+
+    public BigDecimal calculateOriginalAmount(List<OrderItemRequest> itemRequests) {
+        Map<String, Integer> aggregatedItems = aggregateQuantities(itemRequests);
+        BigDecimal total = BigDecimal.ZERO;
+        for (Map.Entry<String, Integer> entry : aggregatedItems.entrySet()) {
+            ProductModel product = productRepository.findByProductId(new ProductId(entry.getKey()))
+                    .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND,
+                            "해당 ID의 상품이 존재하지 않습니다: " + entry.getKey()));
+            total = total.add(product.getPrice().value().multiply(BigDecimal.valueOf(entry.getValue())));
+        }
+        return total;
     }
 
     public OrderModel cancelOrder(Long memberId, String orderId) {
