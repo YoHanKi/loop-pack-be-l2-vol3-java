@@ -1,5 +1,6 @@
 package com.loopers.domain.product;
 
+import com.loopers.domain.common.cursor.CursorPageResult;
 import com.loopers.domain.product.vo.ProductId;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,6 +16,8 @@ public interface ProductRepository {
     boolean existsByProductId(ProductId productId);
 
     Page<ProductModel> findProducts(Long refBrandId, String sortBy, Pageable pageable);
+
+    CursorPageResult<ProductModel> findProductsByCursor(Long refBrandId, String sortBy, String cursor, int size);
 
     /**
      * 재고를 차감합니다. 재고가 부족하면 false를 반환합니다.
