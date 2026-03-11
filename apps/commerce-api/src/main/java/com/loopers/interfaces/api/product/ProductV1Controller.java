@@ -2,6 +2,7 @@ package com.loopers.interfaces.api.product;
 
 import com.loopers.application.product.ProductFacade;
 import com.loopers.application.product.ProductInfo;
+import com.loopers.domain.common.cursor.CursorPageResult;
 import com.loopers.interfaces.api.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -72,6 +73,18 @@ public class ProductV1Controller implements ProductV1ApiSpec {
 
         ProductV1Dto.ProductListResponse response = ProductV1Dto.ProductListResponse.from(productPage);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @GetMapping("/cursor")
+    @Override
+    public ResponseEntity<ApiResponse<ProductV1Dto.CursorListResponse>> getProductsByCursor(
+            @RequestParam(required = false) String brandId,
+            @RequestParam(required = false, defaultValue = "latest") String sort,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        CursorPageResult<ProductInfo> result = productFacade.getProductsByCursor(brandId, sort, cursor, size);
+        return ResponseEntity.ok(ApiResponse.success(ProductV1Dto.CursorListResponse.from(result)));
     }
 
     @DeleteMapping("/{productId}")
