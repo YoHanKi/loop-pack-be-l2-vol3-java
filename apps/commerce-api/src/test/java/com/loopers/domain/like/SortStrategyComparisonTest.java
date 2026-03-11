@@ -1,17 +1,18 @@
 package com.loopers.domain.like;
 
 import com.loopers.domain.brand.BrandService;
-import com.loopers.domain.product.ProductModel;
-import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.ProductService;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -20,34 +21,30 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 정렬 구조 비교 실험: 비정규화(like_count) vs MaterializedView 시뮬레이션
+ * 정렬 구조 비교 실험: 비정규화(like_count) vs 다차원 MaterializedView
  *
  * <p>비교 관점:
  * <ul>
- *   <li>즉시 정합성: 좋아요 등록 직후 정렬 결과 반영 여부</li>
- *   <li>정렬 정확성: 두 방식의 정렬 순서가 실제로 동일한가</li>
- *   <li>동시성 정확성: 동시 좋아요 50건 → like_count 정확히 50인가</li>
- *   <li>복구: 카운트 오염 후 각 방식의 복구 절차</li>
- *   <li>성능: 비정규화 정렬 쿼리 vs 실시간 집계 JOIN 정렬 쿼리 응답시간</li>
+ *   <li>MV 갱신 전략 3종 (Sync / Async / Batch) — 정합성 지연 및 동시성 정확도</li>
+ *   <li>다차원 쿼리 — 비정규화가 답할 수 없는 브랜드별 랭킹, 시간 윈도우 트렌딩</li>
+ *   <li>비정규화 vs 잘 설계된 MV — 단순 집계 성능, 다차원 집계, 복구 비교</li>
+ *   <li>동시성 — 비정규화 원자 UPDATE vs MV Sync 동시 갱신 정확도</li>
  * </ul>
  *
- * <p>MaterializedView 시뮬레이션 방식:
- * MySQL 8.x는 네이티브 MV를 미지원하므로, 다음 두 가지로 동작 원리를 재현한다.
- * <ol>
- *   <li>{@code aggregateLikeCount}: likes 테이블 실시간 집계 (MV 배치 실행 직전 "실제" 값)</li>
- *   <li>{@code refreshMaterializedView}: 집계 결과를 products.like_count에 반영 (배치 실행 시뮬레이션)</li>
- * </ol>
- * MV 시나리오 테스트에서는 LikeService 대신 JDBC 직접 INSERT로 likes만 적재하고,
- * products.like_count를 손대지 않아 배치 전 staleness를 재현한다.
+ * <p>product_like_stats 테이블 설계:
+ * <pre>
+ *   (product_id, brand_id, time_window, like_count, refreshed_at)
+ *   PK: (product_id, time_window)
+ *   time_window: 'all' | '7d' | '1d'
+ * </pre>
+ * 단일 테이블에 여러 집계 축을 저장함으로써 brand_id + time_window 조합 쿼리를
+ * likes 테이블 재스캔 없이 인덱스만으로 처리 가능.
  */
 @SpringBootTest
-@DisplayName("정렬 구조 비교 실험: 비정규화(like_count) vs MaterializedView 시뮬레이션")
+@DisplayName("정렬 구조 비교 실험: 비정규화(like_count) vs 다차원 MaterializedView")
 class SortStrategyComparisonTest {
 
     private static final Logger log = LoggerFactory.getLogger(SortStrategyComparisonTest.class);
@@ -59,9 +56,6 @@ class SortStrategyComparisonTest {
     private ProductService productService;
 
     @Autowired
-    private ProductRepository productRepository;
-
-    @Autowired
     private BrandService brandService;
 
     @Autowired
@@ -70,225 +64,482 @@ class SortStrategyComparisonTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+
     @BeforeEach
     void setUp() {
+        jdbcTemplate.execute(
+            "CREATE TABLE IF NOT EXISTS product_like_stats (" +
+            "  product_id   BIGINT       NOT NULL," +
+            "  brand_id     BIGINT       NOT NULL," +
+            "  time_window  VARCHAR(10)  NOT NULL," +
+            "  like_count   BIGINT       NOT NULL DEFAULT 0," +
+            "  refreshed_at DATETIME(6)  NOT NULL," +
+            "  PRIMARY KEY (product_id, time_window)" +
+            ")"
+        );
         brandService.createBrand("nike", "Nike");
+        brandService.createBrand("adidas", "Adidas");
     }
 
     @AfterEach
     void tearDown() {
+        jdbcTemplate.execute("DROP TABLE IF EXISTS product_like_stats");
         databaseCleanUp.truncateAllTables();
     }
 
     // ============================================================
-    // 헬퍼 메서드
+    // 헬퍼
     // ============================================================
 
-    /** likes 테이블 실시간 집계 — MV 배치 실행 직전의 "진짜" 카운트를 확인할 때 사용 */
-    private long aggregateLikeCount(Long productRefId) {
+    private Long getProductDbId(String productId) {
+        return jdbcTemplate.queryForObject(
+            "SELECT id FROM products WHERE product_id = ?", Long.class, productId
+        );
+    }
+
+    private Long getBrandDbId(String productId) {
+        return jdbcTemplate.queryForObject(
+            "SELECT ref_brand_id FROM products WHERE product_id = ?", Long.class, productId
+        );
+    }
+
+    private long getStatsCount(Long productDbId, String timeWindow) {
+        List<Long> result = jdbcTemplate.queryForList(
+            "SELECT like_count FROM product_like_stats WHERE product_id = ? AND time_window = ?",
+            Long.class, productDbId, timeWindow
+        );
+        return result.isEmpty() ? 0L : result.get(0);
+    }
+
+    private long aggregateLikeCount(Long productDbId) {
         Long count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM likes WHERE ref_product_id = ? AND deleted_at IS NULL",
-                Long.class, productRefId
+            "SELECT COUNT(*) FROM likes WHERE ref_product_id = ? AND deleted_at IS NULL",
+            Long.class, productDbId
         );
         return count == null ? 0L : count;
     }
 
-    /**
-     * MV 배치 갱신 시뮬레이션.
-     * 실제 운영에서는 @Scheduled 배치가 이 쿼리를 주기적으로 실행한다.
-     * products.like_count = (likes 테이블 실시간 집계)
-     */
-    private void refreshMaterializedView() {
+    /** like INSERT만 수행. stats 미갱신 — Batch/Async 전략 시뮬레이션용 */
+    private void insertLikeOnly(Long memberId, Long productRefId) {
         jdbcTemplate.update(
-                "UPDATE products p SET like_count = (" +
-                "    SELECT COUNT(*) FROM likes l" +
-                "    WHERE l.ref_product_id = p.id AND l.deleted_at IS NULL" +
-                ")"
+            "INSERT INTO likes (ref_member_id, ref_product_id, created_at, updated_at)" +
+            " VALUES (?, ?, NOW(6), NOW(6))",
+            memberId, productRefId
         );
     }
 
-    /** MV 시나리오: LikeService 우회 — likes만 적재, products.like_count 비갱신 */
-    private void insertLikeDirectly(Long memberId, Long productRefId) {
+    /** created_at을 10일 전으로 설정 — 7일 윈도우 밖의 오래된 좋아요 시뮬레이션 */
+    private void insertOldLike(Long memberId, Long productRefId) {
         jdbcTemplate.update(
+            "INSERT INTO likes (ref_member_id, ref_product_id, created_at, updated_at)" +
+            " VALUES (?, ?, NOW(6) - INTERVAL 10 DAY, NOW(6))",
+            memberId, productRefId
+        );
+    }
+
+    /**
+     * Sync 전략: like INSERT와 stats UPSERT를 동일 트랜잭션으로 묶음.
+     * ON DUPLICATE KEY UPDATE로 stats의 like_count를 원자 증가.
+     */
+    private void insertLikeSync(Long memberId, Long productRefId, Long brandRefId) {
+        transactionTemplate.execute(status -> {
+            jdbcTemplate.update(
                 "INSERT INTO likes (ref_member_id, ref_product_id, created_at, updated_at)" +
                 " VALUES (?, ?, NOW(6), NOW(6))",
                 memberId, productRefId
-        );
+            );
+            jdbcTemplate.update(
+                "INSERT INTO product_like_stats (product_id, brand_id, time_window, like_count, refreshed_at)" +
+                " VALUES (?, ?, 'all', 1, NOW(6))" +
+                " ON DUPLICATE KEY UPDATE like_count = like_count + 1, refreshed_at = NOW(6)",
+                productRefId, brandRefId
+            );
+            return null;
+        });
     }
 
-    private ProductModel freshProduct(ProductModel product) {
-        return productRepository.findById(product.getId()).orElseThrow();
-    }
-
-    // ============================================================
-    // 1. 즉시 정합성 (Immediate Consistency)
-    // ============================================================
-
-    @Test
-    @DisplayName("[즉시 정합성 — 비정규화] 좋아요 등록 직후 like_count가 즉시 반영된다")
-    void denormalization_addLike_immediatelyReflectedInLikeCount() {
-        ProductModel product = productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
-
-        likeService.addLike(1L, "prod1");
-
-        // 비정규화: 좋아요 등록과 동일 트랜잭션에서 products.like_count += 1
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(1);
-        // 집계값과도 정확히 일치
-        assertThat(aggregateLikeCount(product.getId())).isEqualTo(1);
-    }
-
-    @Test
-    @DisplayName("[즉시 정합성 — 비정규화] 좋아요 취소 직후 like_count가 즉시 반영된다")
-    void denormalization_removeLike_immediatelyReflectedInLikeCount() {
-        ProductModel product = productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
-        likeService.addLike(1L, "prod1");
-
-        likeService.removeLike(1L, "prod1");
-
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(0);
-        assertThat(aggregateLikeCount(product.getId())).isEqualTo(0);
-    }
-
-    @Test
-    @DisplayName("[즉시 정합성 — MV 시뮬레이션] 배치 갱신 전에는 like_count가 stale 상태다")
-    void materializedView_beforeRefresh_likeCountIsStale() {
-        ProductModel product = productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
-
-        // MV 시나리오: likes 테이블에만 INSERT, products.like_count는 건드리지 않음
-        insertLikeDirectly(1L, product.getId());
-        insertLikeDirectly(2L, product.getId());
-
-        // 배치 전: products.like_count = 0 (stale)
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(0);
-        // 실제 집계: 2
-        assertThat(aggregateLikeCount(product.getId())).isEqualTo(2);
-
-        // 배치 갱신 실행
-        refreshMaterializedView();
-
-        // 배치 후: products.like_count = 2 (동기화 완료)
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(2);
-    }
-
-    @Test
-    @DisplayName("[즉시 정합성 — MV 시뮬레이션] 좋아요 취소도 배치 전까지 반영되지 않는다")
-    void materializedView_removeLike_alsoStaleBeforeRefresh() {
-        ProductModel product = productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
-        insertLikeDirectly(1L, product.getId());
-        insertLikeDirectly(2L, product.getId());
-        refreshMaterializedView();
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(2);
-
-        // 좋아요 취소 (soft-delete only, products는 비갱신)
+    /** Batch 전략: 전체 윈도우 일괄 재집계 */
+    private void batchRefreshAll() {
         jdbcTemplate.update(
-                "UPDATE likes SET deleted_at = NOW(6), updated_at = NOW(6)" +
-                " WHERE ref_product_id = ? AND ref_member_id = ? AND deleted_at IS NULL",
-                product.getId(), 1L
+            "INSERT INTO product_like_stats (product_id, brand_id, time_window, like_count, refreshed_at)" +
+            " SELECT l.ref_product_id, p.ref_brand_id, 'all', COUNT(*), NOW(6)" +
+            " FROM likes l JOIN products p ON l.ref_product_id = p.id" +
+            " WHERE l.deleted_at IS NULL" +
+            " GROUP BY l.ref_product_id, p.ref_brand_id" +
+            " ON DUPLICATE KEY UPDATE like_count = VALUES(like_count), refreshed_at = NOW(6)"
         );
+    }
 
-        // 배치 전: like_count = 2 (stale — 아직 취소 미반영)
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(2);
-        assertThat(aggregateLikeCount(product.getId())).isEqualTo(1); // 실제는 1
-
-        // 배치 갱신 후: like_count = 1
-        refreshMaterializedView();
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(1);
+    /** Batch 전략: 7일 윈도우 재집계 */
+    private void batchRefresh7d() {
+        jdbcTemplate.update(
+            "INSERT INTO product_like_stats (product_id, brand_id, time_window, like_count, refreshed_at)" +
+            " SELECT l.ref_product_id, p.ref_brand_id, '7d', COUNT(*), NOW(6)" +
+            " FROM likes l JOIN products p ON l.ref_product_id = p.id" +
+            " WHERE l.deleted_at IS NULL AND l.created_at >= NOW(6) - INTERVAL 7 DAY" +
+            " GROUP BY l.ref_product_id, p.ref_brand_id" +
+            " ON DUPLICATE KEY UPDATE like_count = VALUES(like_count), refreshed_at = NOW(6)"
+        );
     }
 
     // ============================================================
-    // 2. 정렬 정확성 (Sort Correctness)
+    // Section 1: MV 갱신 전략 3종 비교
     // ============================================================
 
     @Test
-    @DisplayName("[정렬 정확성] 비정규화 like_count 기반 정렬 순서가 실시간 집계 결과와 일치한다")
-    void denormalization_sortOrder_matchesAggregateOrder() {
+    @DisplayName("[Sync 전략] like INSERT와 stats UPSERT 동일 트랜잭션 → 즉시 정합성")
+    void mvSync_sameTransaction_immediateConsistency() {
+        productService.createProduct("prodA", "nike", "Nike Air", new BigDecimal("100000"), 10);
+        Long prodADbId = getProductDbId("prodA");
+        Long nikeDbId = getBrandDbId("prodA");
+
+        insertLikeSync(1L, prodADbId, nikeDbId);
+        insertLikeSync(2L, prodADbId, nikeDbId);
+
+        assertThat(getStatsCount(prodADbId, "all")).isEqualTo(2);
+        assertThat(aggregateLikeCount(prodADbId)).isEqualTo(2);
+        log.info("[Sync] stats.all={} / likes.count={}", getStatsCount(prodADbId, "all"), aggregateLikeCount(prodADbId));
+    }
+
+    @Test
+    @DisplayName("[Async 전략] like INSERT 후 stats 갱신 전 — 불일치 구간 존재 → 갱신 후 동기화")
+    void mvAsync_inconsistencyWindow_thenEventuallyConsistent() {
+        productService.createProduct("prodA", "nike", "Nike Air", new BigDecimal("100000"), 10);
+        Long prodADbId = getProductDbId("prodA");
+
+        // Step 1: like만 INSERT (async consumer 아직 미실행)
+        insertLikeOnly(1L, prodADbId);
+        insertLikeOnly(2L, prodADbId);
+
+        // 불일치 구간: likes=2, stats=0
+        assertThat(aggregateLikeCount(prodADbId)).isEqualTo(2);
+        assertThat(getStatsCount(prodADbId, "all")).isEqualTo(0);
+        log.info("[Async — 불일치 구간] likes={}, stats.all={}", aggregateLikeCount(prodADbId), getStatsCount(prodADbId, "all"));
+
+        // Step 2: 비동기 consumer 실행 (별도 트랜잭션)
+        batchRefreshAll();
+
+        assertThat(getStatsCount(prodADbId, "all")).isEqualTo(2);
+        log.info("[Async — 동기화 후] likes={}, stats.all={}", aggregateLikeCount(prodADbId), getStatsCount(prodADbId, "all"));
+    }
+
+    @Test
+    @DisplayName("[Batch 전략] 다수 좋아요 후 배치 실행 — stale 구간 확인, 배치 후 일괄 갱신")
+    void mvBatch_accumulatedLikes_staleUntilBatch() {
         productService.createProduct("prodA", "nike", "Nike Air A", new BigDecimal("100000"), 10);
         productService.createProduct("prodB", "nike", "Nike Air B", new BigDecimal("100000"), 10);
-        productService.createProduct("prodC", "nike", "Nike Air C", new BigDecimal("100000"), 10);
+        Long prodADbId = getProductDbId("prodA");
+        Long prodBDbId = getProductDbId("prodB");
 
-        // prodA: 3 likes, prodB: 1 like, prodC: 2 likes
-        likeService.addLike(1L, "prodA");
-        likeService.addLike(2L, "prodA");
-        likeService.addLike(3L, "prodA");
-        likeService.addLike(4L, "prodB");
-        likeService.addLike(5L, "prodC");
-        likeService.addLike(6L, "prodC");
+        for (int i = 0; i < 5; i++) insertLikeOnly((long) i + 1, prodADbId);
+        for (int i = 0; i < 2; i++) insertLikeOnly((long) i + 10, prodBDbId);
 
-        // 비정규화 기반 정렬 (인덱스 활용)
-        List<String> sortedByDenorm = jdbcTemplate.queryForList(
-                "SELECT product_id FROM products WHERE deleted_at IS NULL ORDER BY like_count DESC",
-                String.class
-        );
+        // 배치 전: stats 없음
+        assertThat(getStatsCount(prodADbId, "all")).isEqualTo(0);
+        assertThat(getStatsCount(prodBDbId, "all")).isEqualTo(0);
 
-        // 실시간 집계 JOIN 정렬 (MV 없는 실시간 쿼리)
-        List<String> sortedByAggregate = jdbcTemplate.queryForList(
-                "SELECT p.product_id FROM products p" +
-                " LEFT JOIN (" +
-                "     SELECT ref_product_id, COUNT(*) AS cnt" +
-                "     FROM likes WHERE deleted_at IS NULL GROUP BY ref_product_id" +
-                " ) l ON p.id = l.ref_product_id" +
-                " WHERE p.deleted_at IS NULL" +
-                " ORDER BY COALESCE(l.cnt, 0) DESC",
-                String.class
-        );
+        batchRefreshAll();
 
-        assertThat(sortedByDenorm).isEqualTo(sortedByAggregate);
-        assertThat(sortedByDenorm.get(0)).isEqualTo("prodA"); // 3 likes
-        assertThat(sortedByDenorm.get(1)).isEqualTo("prodC"); // 2 likes
-        assertThat(sortedByDenorm.get(2)).isEqualTo("prodB"); // 1 like
+        assertThat(getStatsCount(prodADbId, "all")).isEqualTo(5);
+        assertThat(getStatsCount(prodBDbId, "all")).isEqualTo(2);
+        log.info("[Batch] prodA.all={}, prodB.all={}", getStatsCount(prodADbId, "all"), getStatsCount(prodBDbId, "all"));
     }
 
     @Test
-    @DisplayName("[정렬 정확성 — MV stale] 배치 갱신 전 좋아요 순 정렬은 이전 상태 기준이다")
-    void materializedView_sortOrder_staleBeforeRefresh() {
+    @DisplayName("[전략 비교] Sync는 즉시 정확, Batch는 stale → 배치 후 정확")
+    void strategy_syncVsBatch_consistencyDifference() throws InterruptedException {
+        productService.createProduct("prodSync", "nike", "Nike Sync", new BigDecimal("100000"), 10);
+        productService.createProduct("prodBatch", "nike", "Nike Batch", new BigDecimal("100000"), 10);
+        Long syncDbId = getProductDbId("prodSync");
+        Long batchDbId = getProductDbId("prodBatch");
+        Long nikeDbId = getBrandDbId("prodSync");
+
+        int threadCount = 20;
+        CountDownLatch ready = new CountDownLatch(threadCount);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threadCount);
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+
+        for (int i = 0; i < threadCount; i++) {
+            long memberId = i + 1L;
+            executor.submit(() -> {
+                ready.countDown();
+                try {
+                    start.await();
+                    insertLikeSync(memberId, syncDbId, nikeDbId);
+                    insertLikeOnly(memberId + 100L, batchDbId);
+                } catch (Exception ignored) {
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        ready.await();
+        start.countDown();
+        done.await();
+        executor.shutdown();
+
+        // Sync: 즉시 정확
+        assertThat(getStatsCount(syncDbId, "all")).isEqualTo(threadCount);
+        // Batch: 배치 전 stale
+        assertThat(getStatsCount(batchDbId, "all")).isEqualTo(0);
+        // Batch 실행 후 정확
+        batchRefreshAll();
+        assertThat(getStatsCount(batchDbId, "all")).isEqualTo(threadCount);
+
+        log.info("[전략 비교] Sync(즉시)={} / Batch(stale→갱신 후)={}",
+            getStatsCount(syncDbId, "all"), getStatsCount(batchDbId, "all"));
+    }
+
+    // ============================================================
+    // Section 2: 다차원 쿼리 — 비정규화가 답할 수 없는 것
+    // ============================================================
+
+    @Test
+    @DisplayName("[다차원 — 브랜드별 랭킹] 브랜드 내 인기 순위를 stats 단일 쿼리로 — products 스캔 없음")
+    void multidimensional_brandRanking_noProductsScan() {
         productService.createProduct("prodA", "nike", "Nike Air A", new BigDecimal("100000"), 10);
         productService.createProduct("prodB", "nike", "Nike Air B", new BigDecimal("100000"), 10);
+        productService.createProduct("prodC", "adidas", "Adidas Run C", new BigDecimal("90000"), 10);
+        Long prodADbId = getProductDbId("prodA");
+        Long prodBDbId = getProductDbId("prodB");
+        Long prodCDbId = getProductDbId("prodC");
+        Long nikeDbId = getBrandDbId("prodA");
+        Long adidasDbId = getBrandDbId("prodC");
 
-        // prodA: 1 like, prodB: 0 likes → 초기 MV 갱신
-        insertLikeDirectly(1L,
-                productRepository.findById(
-                        jdbcTemplate.queryForObject("SELECT id FROM products WHERE product_id = 'prodA'", Long.class)
-                ).orElseThrow().getId()
+        // nike: prodA=3, prodB=1 / adidas: prodC=5
+        for (int i = 0; i < 3; i++) insertLikeSync((long) i + 1, prodADbId, nikeDbId);
+        insertLikeSync(10L, prodBDbId, nikeDbId);
+        for (int i = 0; i < 5; i++) insertLikeSync((long) i + 20, prodCDbId, adidasDbId);
+
+        // nike 브랜드 내 인기 순위: stats 테이블 단독 쿼리 (products JOIN 불필요)
+        List<Long> nikeRanking = jdbcTemplate.queryForList(
+            "SELECT product_id FROM product_like_stats" +
+            " WHERE brand_id = ? AND time_window = 'all'" +
+            " ORDER BY like_count DESC",
+            Long.class, nikeDbId
         );
-        refreshMaterializedView();
 
-        // prodB에 2 likes 추가 (배치 전)
-        Long prodBId = jdbcTemplate.queryForObject("SELECT id FROM products WHERE product_id = 'prodB'", Long.class);
-        insertLikeDirectly(2L, prodBId);
-        insertLikeDirectly(3L, prodBId);
+        assertThat(nikeRanking).hasSize(2);
+        assertThat(nikeRanking.get(0)).isEqualTo(prodADbId); // 3 likes
+        assertThat(nikeRanking.get(1)).isEqualTo(prodBDbId); // 1 like
+        // adidas prodC는 nike 랭킹에 포함되지 않음
+        assertThat(nikeRanking).doesNotContain(prodCDbId);
+        log.info("[브랜드 랭킹] nike 순위: {}위={}, {}위={}", 1, nikeRanking.get(0), 2, nikeRanking.get(1));
+    }
 
-        // MV 기준 정렬: prodA(1) > prodB(0) — prodB의 추가 좋아요 미반영
-        List<String> staleOrder = jdbcTemplate.queryForList(
-                "SELECT product_id FROM products WHERE deleted_at IS NULL ORDER BY like_count DESC",
-                String.class
+    @Test
+    @DisplayName("[다차원 — 시간 윈도우] 전체 랭킹 vs 7일 트렌딩 — 오래된 인기 상품과 최신 급상승 상품 순위 역전")
+    void multidimensional_timeWindow_rankingReverts() {
+        productService.createProduct("prodA", "nike", "Nike Air A", new BigDecimal("100000"), 10);
+        productService.createProduct("prodB", "nike", "Nike Air B", new BigDecimal("100000"), 10);
+        Long prodADbId = getProductDbId("prodA");
+        Long prodBDbId = getProductDbId("prodB");
+        Long nikeDbId = getBrandDbId("prodA");
+
+        // prodA: 오래된 좋아요 5개 (7일 윈도우 밖) → 전체 순위는 높지만 트렌딩은 낮음
+        for (int i = 0; i < 5; i++) insertOldLike((long) i + 1, prodADbId);
+        // prodB: 최근 좋아요 3개 (7일 이내) → 전체 순위는 낮지만 트렌딩은 높음
+        for (int i = 0; i < 3; i++) insertLikeOnly((long) i + 10, prodBDbId);
+
+        batchRefreshAll();
+        batchRefresh7d();
+
+        // 전체 랭킹: prodA(5) > prodB(3)
+        List<Long> allRanking = jdbcTemplate.queryForList(
+            "SELECT product_id FROM product_like_stats" +
+            " WHERE brand_id = ? AND time_window = 'all' ORDER BY like_count DESC",
+            Long.class, nikeDbId
         );
-        assertThat(staleOrder.get(0)).isEqualTo("prodA"); // stale: prodB의 2 likes 미반영
+        assertThat(allRanking.get(0)).isEqualTo(prodADbId);
 
-        // 배치 갱신 후 정렬: prodB(2) > prodA(1)
-        refreshMaterializedView();
-        List<String> freshOrder = jdbcTemplate.queryForList(
-                "SELECT product_id FROM products WHERE deleted_at IS NULL ORDER BY like_count DESC",
-                String.class
+        // 7일 트렌딩: prodB(3) > prodA(0) — 순위 역전
+        List<Long> trending7d = jdbcTemplate.queryForList(
+            "SELECT product_id FROM product_like_stats" +
+            " WHERE brand_id = ? AND time_window = '7d' ORDER BY like_count DESC",
+            Long.class, nikeDbId
         );
-        assertThat(freshOrder.get(0)).isEqualTo("prodB");
+        assertThat(trending7d.get(0)).isEqualTo(prodBDbId);
+
+        log.info("[시간 윈도우] 전체 1위={} / 7일 트렌딩 1위={} — 순위 역전",
+            allRanking.get(0), trending7d.get(0));
+    }
+
+    @Test
+    @DisplayName("[다차원 — 브랜드 + 기간 조합] nike의 7일 트렌딩 — stats 단일 쿼리, adidas 자동 격리")
+    void multidimensional_brandAndTimeWindow_combined() {
+        productService.createProduct("prodA", "nike", "Nike Air A", new BigDecimal("100000"), 10);
+        productService.createProduct("prodB", "nike", "Nike Air B", new BigDecimal("100000"), 10);
+        productService.createProduct("prodC", "adidas", "Adidas Run C", new BigDecimal("90000"), 10);
+        Long prodADbId = getProductDbId("prodA");
+        Long prodBDbId = getProductDbId("prodB");
+        Long prodCDbId = getProductDbId("prodC");
+        Long nikeDbId = getBrandDbId("prodA");
+        Long adidasDbId = getBrandDbId("prodC");
+
+        // nike prodA: 최근 2개
+        for (int i = 0; i < 2; i++) insertLikeOnly((long) i + 1, prodADbId);
+        // nike prodB: 최근 4개
+        for (int i = 0; i < 4; i++) insertLikeOnly((long) i + 10, prodBDbId);
+        // adidas prodC: 최근 100개 — 다른 브랜드, 섞이지 않아야 함
+        for (int i = 0; i < 100; i++) insertLikeOnly((long) i + 100, prodCDbId);
+
+        batchRefresh7d();
+
+        // nike의 7일 트렌딩: brand_id = nike AND time_window = '7d'
+        List<Long> nikeTrending7d = jdbcTemplate.queryForList(
+            "SELECT product_id FROM product_like_stats" +
+            " WHERE brand_id = ? AND time_window = '7d' ORDER BY like_count DESC",
+            Long.class, nikeDbId
+        );
+
+        assertThat(nikeTrending7d).hasSize(2);
+        assertThat(nikeTrending7d.get(0)).isEqualTo(prodBDbId); // 4 likes
+        assertThat(nikeTrending7d.get(1)).isEqualTo(prodADbId); // 2 likes
+        assertThat(nikeTrending7d).doesNotContain(prodCDbId);   // adidas 자동 격리
+        log.info("[브랜드+기간] nike 7일 트렌딩: 1위={}, 2위={}", nikeTrending7d.get(0), nikeTrending7d.get(1));
     }
 
     // ============================================================
-    // 3. 동시성 정확성 (Concurrency Correctness)
+    // Section 3: 비정규화 vs 잘 설계된 MV 비교
     // ============================================================
 
     @Test
-    @DisplayName("[동시성 — 비정규화] 50명 동시 좋아요 → like_count = 50 (원자 UPDATE 보장)")
+    @DisplayName("[비교 — 단순 집계] 비정규화(인덱스) vs MV+JOIN — 응답시간 및 결과 동일")
+    void comparison_simpleAggregate_denormVsMv_sameResultDifferentPath() {
+        for (int i = 1; i <= 5; i++) {
+            String productId = "prod" + i;
+            productService.createProduct(productId, "nike", "Nike " + i, new BigDecimal("100000"), 10);
+            Long dbId = getProductDbId(productId);
+            Long nikeDbId = getBrandDbId(productId);
+            for (int j = 0; j < i; j++) {
+                insertLikeSync((long) (j + i * 10), dbId, nikeDbId);
+            }
+        }
+
+        // warm-up
+        jdbcTemplate.queryForList(
+            "SELECT product_id FROM products WHERE deleted_at IS NULL ORDER BY like_count DESC LIMIT 5",
+            String.class
+        );
+
+        // 비정규화: products.like_count 인덱스 직접 활용
+        long denormStart = System.nanoTime();
+        List<String> denormResult = jdbcTemplate.queryForList(
+            "SELECT product_id FROM products WHERE deleted_at IS NULL ORDER BY like_count DESC LIMIT 5",
+            String.class
+        );
+        long denormNs = System.nanoTime() - denormStart;
+
+        // MV: stats 집계 후 products JOIN
+        long mvStart = System.nanoTime();
+        List<String> mvResult = jdbcTemplate.queryForList(
+            "SELECT p.product_id FROM product_like_stats s" +
+            " JOIN products p ON s.product_id = p.id" +
+            " WHERE s.time_window = 'all' AND p.deleted_at IS NULL" +
+            " ORDER BY s.like_count DESC LIMIT 5",
+            String.class
+        );
+        long mvNs = System.nanoTime() - mvStart;
+
+        assertThat(denormResult).isEqualTo(mvResult);
+        log.info("[단순 집계] 비정규화={}ms / MV+JOIN={}ms / 비율={}배",
+            String.format("%.3f", denormNs / 1_000_000.0),
+            String.format("%.3f", mvNs / 1_000_000.0),
+            String.format("%.2f", (double) mvNs / Math.max(denormNs, 1)));
+    }
+
+    @Test
+    @DisplayName("[비교 — 다차원 집계] MV는 인덱스 스캔, 비정규화는 likes 전체 스캔 + GROUP BY 불가피")
+    void comparison_multidimensionalAggregate_mvRequiresNoFullScan() {
+        productService.createProduct("prodA", "nike", "Nike Air A", new BigDecimal("100000"), 10);
+        productService.createProduct("prodB", "nike", "Nike Air B", new BigDecimal("100000"), 10);
+        productService.createProduct("prodC", "adidas", "Adidas Run C", new BigDecimal("90000"), 10);
+        Long prodADbId = getProductDbId("prodA");
+        Long prodBDbId = getProductDbId("prodB");
+        Long prodCDbId = getProductDbId("prodC");
+        Long nikeDbId = getBrandDbId("prodA");
+        Long adidasDbId = getBrandDbId("prodC");
+
+        // nike prodA: 최근 3개, nike prodB: 최근 5개
+        for (int i = 0; i < 3; i++) insertLikeOnly((long) i + 1, prodADbId);
+        for (int i = 0; i < 5; i++) insertLikeOnly((long) i + 10, prodBDbId);
+        // adidas prodC: 최근 10개 — 비교에서 제외되어야 함
+        for (int i = 0; i < 10; i++) insertLikeOnly((long) i + 20, prodCDbId);
+
+        batchRefresh7d();
+
+        // 비정규화로 "nike의 7일 트렌딩"을 구하려면 → likes 전체 스캔 + GROUP BY 불가피
+        List<Long> denormApproach = jdbcTemplate.queryForList(
+            "SELECT p.id FROM products p" +
+            " LEFT JOIN (" +
+            "   SELECT ref_product_id, COUNT(*) AS cnt FROM likes" +
+            "   WHERE deleted_at IS NULL AND created_at >= NOW(6) - INTERVAL 7 DAY" +
+            "   GROUP BY ref_product_id" +
+            " ) l ON p.id = l.ref_product_id" +
+            " WHERE p.ref_brand_id = ? AND p.deleted_at IS NULL AND COALESCE(l.cnt, 0) > 0" +
+            " ORDER BY COALESCE(l.cnt, 0) DESC",
+            Long.class, nikeDbId
+        );
+
+        // MV로 "nike의 7일 트렌딩" → stats 인덱스 단독 스캔
+        List<Long> mvApproach = jdbcTemplate.queryForList(
+            "SELECT product_id FROM product_like_stats" +
+            " WHERE brand_id = ? AND time_window = '7d'" +
+            " ORDER BY like_count DESC",
+            Long.class, nikeDbId
+        );
+
+        assertThat(mvApproach).isEqualTo(denormApproach);
+        assertThat(mvApproach).doesNotContain(prodCDbId);
+        assertThat(mvApproach.get(0)).isEqualTo(prodBDbId); // 5 likes
+
+        log.info("[다차원 집계] 비정규화(likes 전체 스캔+GROUP BY) vs MV(인덱스): 결과 일치");
+        log.info("[다차원 집계] MV는 likes 테이블을 전혀 읽지 않음 — 데이터 증가 시 격차 기하급수적으로 커짐");
+    }
+
+    @Test
+    @DisplayName("[비교 — 복구] 비정규화는 수동 DBA SQL 필요, MV는 배치 재실행으로 자동 복구")
+    void comparison_recovery_denormManualVsMvAutomatic() {
+        productService.createProduct("prodA", "nike", "Nike Air", new BigDecimal("100000"), 10);
+        Long prodADbId = getProductDbId("prodA");
+        Long nikeDbId = getBrandDbId("prodA");
+
+        for (int i = 0; i < 3; i++) insertLikeSync((long) i + 1, prodADbId, nikeDbId);
+        batchRefreshAll();
+
+        // 오염 시뮬레이션 (배포 버그, 직접 DB 조작 등)
+        jdbcTemplate.update(
+            "UPDATE product_like_stats SET like_count = 999 WHERE product_id = ? AND time_window = 'all'",
+            prodADbId
+        );
+        assertThat(getStatsCount(prodADbId, "all")).isEqualTo(999);
+
+        // MV 복구: 배치 재실행만으로 자동 복구 (멱등)
+        batchRefreshAll();
+
+        assertThat(getStatsCount(prodADbId, "all")).isEqualTo(3);
+        log.info("[복구] MV 배치 재실행으로 999 → 3 자동 복구. 비정규화는 DBA가 재집계 SQL 수동 실행 필요.");
+    }
+
+    // ============================================================
+    // Section 4: 동시성 정확성
+    // ============================================================
+
+    @Test
+    @DisplayName("[동시성 — 비정규화] 50 스레드 동시 좋아요 → like_count = 50 (원자 UPDATE 보장)")
     void denormalization_concurrent50Likes_likeCountEquals50() throws InterruptedException {
-        ProductModel product = productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
+        productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
 
         int threadCount = 50;
         CountDownLatch ready = new CountDownLatch(threadCount);
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(threadCount);
         AtomicInteger successCount = new AtomicInteger();
-
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+
         for (int i = 0; i < threadCount; i++) {
             long memberId = i + 1L;
             executor.submit(() -> {
@@ -303,125 +554,58 @@ class SortStrategyComparisonTest {
                 }
             });
         }
-
         ready.await();
         start.countDown();
         done.await();
         executor.shutdown();
 
-        int finalLikeCount = freshProduct(product).getLikeCount();
-        long aggregateCount = aggregateLikeCount(product.getId());
+        Long likeCount = jdbcTemplate.queryForObject(
+            "SELECT like_count FROM products WHERE product_id = 'prod1'", Long.class
+        );
+        long aggregateCount = aggregateLikeCount(getProductDbId("prod1"));
 
-        log.info("[동시성 — 비정규화] successCount={}, like_count={}, aggregate={}",
-                successCount.get(), finalLikeCount, aggregateCount);
-
+        log.info("[동시성 — 비정규화] success={}, like_count={}, aggregate={}", successCount.get(), likeCount, aggregateCount);
         assertThat(successCount.get()).isEqualTo(threadCount);
-        // 원자 UPDATE: like_count = like_count + 1 — 누락 없이 50 정확히 반영
-        assertThat(finalLikeCount).isEqualTo(threadCount);
-        // 집계값과 완전 일치
-        assertThat(finalLikeCount).isEqualTo((int) aggregateCount);
-    }
-
-    // ============================================================
-    // 4. 복구 시나리오 (Recovery)
-    // ============================================================
-
-    @Test
-    @DisplayName("[복구 — 비정규화] like_count 오염 후 재집계 SQL로 수동 복구")
-    void denormalization_recovery_manualRecalculation() {
-        ProductModel product = productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
-        likeService.addLike(1L, "prod1");
-        likeService.addLike(2L, "prod1");
-        likeService.addLike(3L, "prod1");
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(3);
-
-        // 오염 시뮬레이션: 비정상 UPDATE (배포 버그, 직접 DB 조작 등)
-        jdbcTemplate.update("UPDATE products SET like_count = 99 WHERE id = ?", product.getId());
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(99);
-
-        // 비정규화 복구: DBA가 직접 실행하는 재집계 SQL (운영 패치)
-        jdbcTemplate.update(
-                "UPDATE products p" +
-                " SET p.like_count = (" +
-                "     SELECT COUNT(*) FROM likes l" +
-                "     WHERE l.ref_product_id = p.id AND l.deleted_at IS NULL" +
-                " ) WHERE p.id = ?",
-                product.getId()
-        );
-
-        // 수동 복구 완료
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(3);
+        assertThat(likeCount).isEqualTo((long) threadCount);
+        assertThat(likeCount).isEqualTo(aggregateCount);
     }
 
     @Test
-    @DisplayName("[복구 — MV 시뮬레이션] like_count 오염 후 배치 갱신으로 자동 복구")
-    void materializedView_recovery_automaticByBatchRefresh() {
-        ProductModel product = productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
-        insertLikeDirectly(1L, product.getId());
-        insertLikeDirectly(2L, product.getId());
-        refreshMaterializedView();
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(2);
+    @DisplayName("[동시성 — MV Sync] 30 스레드 동시 Sync 갱신 → stats.all = 30 (ON DUPLICATE KEY UPDATE 원자 보장)")
+    void mvSync_concurrent30Likes_statsEquals30() throws InterruptedException {
+        productService.createProduct("prod1", "nike", "Nike Air", new BigDecimal("100000"), 10);
+        Long prodDbId = getProductDbId("prod1");
+        Long nikeDbId = getBrandDbId("prod1");
 
-        // 오염 시뮬레이션
-        jdbcTemplate.update("UPDATE products SET like_count = 999 WHERE id = ?", product.getId());
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(999);
+        int threadCount = 30;
+        CountDownLatch ready = new CountDownLatch(threadCount);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threadCount);
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
 
-        // MV 복구: 정기 배치 실행만으로 자동 복구 (수동 개입 불필요)
-        refreshMaterializedView();
-
-        assertThat(freshProduct(product).getLikeCount()).isEqualTo(2);
-    }
-
-    // ============================================================
-    // 5. 성능 비교 (Performance Comparison)
-    // ============================================================
-
-    @Test
-    @DisplayName("[성능 비교] 비정규화 정렬 쿼리 vs 실시간 집계 JOIN 정렬 쿼리 — 응답시간 측정")
-    void performance_denormSortVsAggregateJoinSort() {
-        // 10개 상품, 각각 0~9 좋아요
-        for (int i = 0; i < 10; i++) {
-            String productId = "perf" + i;
-            productService.createProduct(productId, "nike", "Nike Air " + i, new BigDecimal("100000"), 10);
-            for (int j = 0; j < i; j++) {
-                likeService.addLike((long) (j + 1), productId);
-            }
+        for (int i = 0; i < threadCount; i++) {
+            long memberId = i + 1L;
+            executor.submit(() -> {
+                ready.countDown();
+                try {
+                    start.await();
+                    insertLikeSync(memberId, prodDbId, nikeDbId);
+                } catch (Exception ignored) {
+                } finally {
+                    done.countDown();
+                }
+            });
         }
+        ready.await();
+        start.countDown();
+        done.await();
+        executor.shutdown();
 
-        // warm-up (JIT, 커넥션 풀 안정화)
-        jdbcTemplate.queryForList(
-                "SELECT product_id FROM products WHERE deleted_at IS NULL ORDER BY like_count DESC LIMIT 10",
-                String.class
-        );
+        long statsCount = getStatsCount(prodDbId, "all");
+        long aggregateCount = aggregateLikeCount(prodDbId);
 
-        // 비정규화 정렬 측정 (인덱스 활용)
-        long denormStart = System.nanoTime();
-        List<String> denormResult = jdbcTemplate.queryForList(
-                "SELECT product_id FROM products WHERE deleted_at IS NULL ORDER BY like_count DESC LIMIT 10",
-                String.class
-        );
-        long denormNs = System.nanoTime() - denormStart;
-
-        // 실시간 집계 JOIN 정렬 측정
-        long aggregateStart = System.nanoTime();
-        List<String> aggregateResult = jdbcTemplate.queryForList(
-                "SELECT p.product_id FROM products p" +
-                " LEFT JOIN (" +
-                "     SELECT ref_product_id, COUNT(*) AS cnt" +
-                "     FROM likes WHERE deleted_at IS NULL GROUP BY ref_product_id" +
-                " ) l ON p.id = l.ref_product_id" +
-                " WHERE p.deleted_at IS NULL" +
-                " ORDER BY COALESCE(l.cnt, 0) DESC LIMIT 10",
-                String.class
-        );
-        long aggregateNs = System.nanoTime() - aggregateStart;
-
-        // 결과 일치 확인 (정확성 전제)
-        assertThat(denormResult).isEqualTo(aggregateResult);
-
-        double ratio = (double) aggregateNs / Math.max(denormNs, 1);
-        log.info("[성능 비교] 비정규화 정렬: {}ms", String.format("%.3f", denormNs / 1_000_000.0));
-        log.info("[성능 비교] 집계 JOIN 정렬: {}ms", String.format("%.3f", aggregateNs / 1_000_000.0));
-        log.info("[성능 비교] 집계 JOIN / 비정규화 = {}배", String.format("%.2f", ratio));
+        log.info("[동시성 — MV Sync] stats.all={}, aggregate={}", statsCount, aggregateCount);
+        assertThat(statsCount).isEqualTo(aggregateCount);
+        assertThat(statsCount).isEqualTo((long) threadCount);
     }
 }

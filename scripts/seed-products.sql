@@ -1,15 +1,17 @@
 -- =============================================================================
--- Volume 5 성능 테스트용 시드 데이터 (brands 10개 + products 100,000건)
+-- Volume 5 성능 테스트용 시드 데이터 (brands 10개 + products 약 1천280만건)
 --
 -- 실행 조건:
 --   - 애플리케이션을 local 프로파일로 기동 완료 후 실행 (ddl-auto: create로 테이블 생성 완료)
 --   - 이미 데이터가 있으면 brands의 UNIQUE 제약으로 중복 삽입 차단됨
+--   - products 데이터가 없는 상태(truncate 이후)에서 실행할 것
 --
 -- 실행 방법:
 --   mysql -u application -p application loopers < scripts/seed-products.sql
 --   또는 MySQL Workbench / IntelliJ Database 에서 직접 실행
 --
--- 예상 실행 시간: 10~30초 (MySQL 8.x 기준, rewriteBatchedStatements=true 설정 시)
+-- 예상 실행 시간: Step 3까지 약 30초, Step 4 배가 7라운드 약 5~15분
+-- 최종 건수: 10만 × 2^7 = 12,800,000건 (약 1천280만)
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -119,7 +121,42 @@ WHERE t.n < 100000;
 DROP TEMPORARY TABLE IF EXISTS tmp_numbers;
 
 -- ---------------------------------------------------------------------------
--- Step 4. 삽입 결과 확인
+-- Step 4. 배가(doubling) 방식으로 10만 → 약 1천280만건으로 확장
+--
+-- 매 라운드마다 현재 테이블 전체를 복사하되 product_id 앞에 라운드 문자(A~G)를 추가.
+-- 7라운드 후: 10만 × 2^7 = 12,800,000건 (약 1천280만)
+-- product_id 최대 길이: 라운드 수(7) + 시드 길이(9) = 16자 ≤ VARCHAR(20) 제약 충족
+-- ---------------------------------------------------------------------------
+INSERT INTO products (product_id, ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at)
+SELECT CONCAT('A', product_id), ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at
+FROM products;
+
+INSERT INTO products (product_id, ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at)
+SELECT CONCAT('B', product_id), ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at
+FROM products;
+
+INSERT INTO products (product_id, ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at)
+SELECT CONCAT('C', product_id), ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at
+FROM products;
+
+INSERT INTO products (product_id, ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at)
+SELECT CONCAT('D', product_id), ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at
+FROM products;
+
+INSERT INTO products (product_id, ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at)
+SELECT CONCAT('E', product_id), ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at
+FROM products;
+
+INSERT INTO products (product_id, ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at)
+SELECT CONCAT('F', product_id), ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at
+FROM products;
+
+INSERT INTO products (product_id, ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at)
+SELECT CONCAT('G', product_id), ref_brand_id, product_name, price, stock_quantity, like_count, created_at, updated_at, deleted_at
+FROM products;
+
+-- ---------------------------------------------------------------------------
+-- Step 5. 삽입 결과 확인
 -- ---------------------------------------------------------------------------
 SELECT '=== 삽입 결과 확인 ===' AS info;
 
