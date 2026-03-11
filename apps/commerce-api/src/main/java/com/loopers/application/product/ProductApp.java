@@ -42,14 +42,13 @@ public class ProductApp {
         });
     }
 
-    @Caching(evict = {
-        @CacheEvict(value = "product",  key = "#productId"),
-        @CacheEvict(value = "products", allEntries = true)
-    })
+    @CacheEvict(value = "products", allEntries = true)
     @Transactional
     public ProductInfo updateProduct(String productId, String productName, BigDecimal price, int stockQuantity) {
         ProductModel product = productService.updateProduct(productId, productName, price, stockQuantity);
-        return ProductInfo.from(product);
+        ProductInfo info = ProductInfo.from(product);
+        productCacheStore.put(productId, info);
+        return info;
     }
 
     @Caching(evict = {
