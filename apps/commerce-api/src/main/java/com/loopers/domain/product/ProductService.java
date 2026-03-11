@@ -56,14 +56,17 @@ public class ProductService {
         productRepository.save(product);
     }
 
-    public Page<ProductModel> getProducts(String brandId, String sortBy, Pageable pageable) {
-        // brandId가 제공되면 Brand PK로 변환
-        Long refBrandId = null;
-        if (brandId != null && !brandId.isBlank()) {
-            BrandModel brand = brandRepository.findByBrandId(new BrandId(brandId))
-                    .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."));
-            refBrandId = brand.getId();
+    public Long resolveRefBrandId(String brandId) {
+        if (brandId == null || brandId.isBlank()) {
+            return null;
         }
+        BrandModel brand = brandRepository.findByBrandId(new BrandId(brandId))
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "해당 ID의 브랜드가 존재하지 않습니다."));
+        return brand.getId();
+    }
+
+    public Page<ProductModel> getProducts(String brandId, String sortBy, Pageable pageable) {
+        Long refBrandId = resolveRefBrandId(brandId);
         return productRepository.findProducts(refBrandId, sortBy, pageable);
     }
 

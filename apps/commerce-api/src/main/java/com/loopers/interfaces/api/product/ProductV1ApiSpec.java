@@ -71,6 +71,25 @@ public interface ProductV1ApiSpec {
             @RequestParam(defaultValue = "10") int size
     );
 
+    @Operation(summary = "상품 목록 조회 (커서 기반)", description = "커서 기반 페이징으로 상품 목록을 조회합니다. 데이터 삽입/삭제 시에도 Skip/Duplicate가 발생하지 않습니다.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "잘못된 커서")
+    })
+    ResponseEntity<ApiResponse<ProductV1Dto.CursorListResponse>> getProductsByCursor(
+            @Parameter(description = "브랜드 ID (선택)", example = "nike")
+            @RequestParam(required = false) String brandId,
+
+            @Parameter(description = "정렬 기준 (latest: 최신순, likes_desc: 좋아요순, price_asc: 가격 낮은순)", example = "latest")
+            @RequestParam(required = false, defaultValue = "latest") String sort,
+
+            @Parameter(description = "커서 (첫 페이지는 생략, 이후 응답의 nextCursor 값을 사용)")
+            @RequestParam(required = false) String cursor,
+
+            @Parameter(description = "페이지 크기", example = "10")
+            @RequestParam(defaultValue = "10") int size
+    );
+
     @Operation(summary = "상품 삭제", description = "상품을 삭제합니다 (Soft Delete).")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "삭제 성공"),

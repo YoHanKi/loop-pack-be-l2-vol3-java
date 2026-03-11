@@ -1,10 +1,12 @@
 package com.loopers.interfaces.api.product;
 
-import com.loopers.application.brand.BrandInfo;
 import com.loopers.application.product.ProductInfo;
+import com.loopers.application.brand.BrandInfo;
+import com.loopers.domain.common.cursor.CursorPageResult;
 import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public class ProductV1Dto {
 
@@ -83,6 +85,22 @@ public class ProductV1Dto {
                     page.getSize(),
                     page.getTotalElements(),
                     page.getTotalPages()
+            );
+        }
+    }
+
+    public record CursorListResponse(
+            List<ProductResponse> items,
+            String nextCursor,
+            boolean hasNext,
+            int size
+    ) {
+        public static CursorListResponse from(CursorPageResult<ProductInfo> result) {
+            return new CursorListResponse(
+                    result.items().stream().map(ProductResponse::from).toList(),
+                    result.nextCursor(),
+                    result.hasNext(),
+                    result.size()
             );
         }
     }

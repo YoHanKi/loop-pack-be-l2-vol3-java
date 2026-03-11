@@ -1,5 +1,6 @@
 package com.loopers.application.product;
 
+import com.loopers.domain.common.cursor.CursorPageResult;
 import com.loopers.domain.product.ProductModel;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.ProductService;
@@ -64,6 +65,12 @@ public class ProductApp {
     @Transactional(readOnly = true)
     public Page<ProductInfo> getProducts(String brandId, String sortBy, Pageable pageable) {
         return productService.getProducts(brandId, sortBy, pageable).map(ProductInfo::from);
+    }
+
+    @Transactional(readOnly = true)
+    public CursorPageResult<ProductInfo> getProductsByCursor(String brandId, String sortBy, String cursor, int size) {
+        Long refBrandId = productService.resolveRefBrandId(brandId);
+        return productRepository.findProductsByCursor(refBrandId, sortBy, cursor, size).map(ProductInfo::from);
     }
 
     @Transactional(readOnly = true)
