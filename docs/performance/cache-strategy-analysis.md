@@ -99,10 +99,10 @@ DB 직접:         100,000원 (정상)
 
 | 유스케이스 | 선택 전략 | 이유 |
 |-----------|---------|------|
-| 상품 상세 `getProduct` | **Cache-Aside** | 수동 제어, DB fallback 내성, TTL 60s |
-| 상품 목록 `getProducts` | **Read-Through** | @Cacheable 선언적 처리, 필터 키 자동 분리 |
-| 수정/삭제 `update`/`delete` | **Write-Around** | 불일치 없음, 단순, 수정 빈도 낮음 |
+| 상품 상세 `getProduct` | **Cache-Aside** | 단일 객체 수동 제어, 명시적 DB fallback 경로 보장 |
+| 상품 목록 `getProducts` | **Read-Through** | `Page<T>` 복합 타입 선언적 처리, 필터 키 자동 분리 |
+| 수정/삭제 `update`/`delete` | **Write-Around** | `@CachePut`은 커밋 전 실행 → 롤백 시 캐시-DB 불일치 구조적 위험 회피 |
 
-**Write-Through 도입 트리거**: 수정 직후 조회 빈도가 높은 워크로드 + @TransactionalEventListener(AFTER_COMMIT) 적용 가능한 경우
+**Write-Through 도입 트리거**: `@TransactionalEventListener(AFTER_COMMIT)` 적용 가능한 경우 — 커밋 확정 후 캐시 갱신으로 불일치 문제 해소 가능
 
 **Write-Behind 도입 트리거**: 손실 허용 데이터(조회수, 인기도 등) + Redis AOF + Kafka 인프라 보유 시
