@@ -1,10 +1,13 @@
 package com.loopers.infrastructure.product;
 
 import com.loopers.domain.product.QProductModel;
+import com.loopers.domain.product.vo.Price;
+import com.querydsl.core.types.Ops;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.core.types.dsl.NumberPath;
+import com.querydsl.core.types.dsl.SimplePath;
 
 import java.math.BigDecimal;
 
@@ -42,9 +45,11 @@ public enum ProductCursorCondition {
     PRICE_ASC {
         @Override
         public BooleanExpression toCursorPredicate(QProductModel p, ProductCursor c) {
-            NumberPath<BigDecimal> pricePath = Expressions.numberPath(BigDecimal.class, p, "price");
-            return pricePath.gt(c.price())
-                    .or(pricePath.eq(c.price()).and(p.id.gt(c.id())));
+            SimplePath<Price> pricePath = Expressions.path(Price.class, p, "price");
+            Price cursorPrice = new Price(c.price());
+            BooleanExpression priceGreater = Expressions.booleanOperation(Ops.GT, pricePath, Expressions.constant(cursorPrice));
+            BooleanExpression priceEqual = Expressions.booleanOperation(Ops.EQ, pricePath, Expressions.constant(cursorPrice));
+            return priceGreater.or(priceEqual.and(p.id.gt(c.id())));
         }
 
         @Override
