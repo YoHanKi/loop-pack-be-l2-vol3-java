@@ -156,3 +156,4 @@ B: [방법명] — 방식 / 장점 / 단점
 - `/analyze-query` — 트랜잭션·쿼리 분석
 - `/requirements-analysis` — 요구사항 설계
 - `/pr-creation` — PR 작성
+- `/commit-plan` — 현재 브랜치 구현 방향·진행 상태를 docs/plan/{브랜치명}-plan.md 로 정리
