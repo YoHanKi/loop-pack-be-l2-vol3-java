@@ -41,6 +41,60 @@ pg:
   simulator:
     url: http://localhost:8082
 
+resilience4j:
+  circuitbreaker:
+    circuit-breaker-aspect-order: 1
+    instances:
+      pg-request:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 60
+        slow-call-duration-threshold: 2s
+        slow-call-rate-threshold: 60
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+        record-exceptions:
+          - java.io.IOException
+          - com.loopers.infrastructure.payment.pg.PgServerException
+        ignore-exceptions:
+          - com.loopers.support.error.CoreException
+      pg-query:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 60
+        slow-call-duration-threshold: 2s
+        slow-call-rate-threshold: 60
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+        record-exceptions:
+          - java.io.IOException
+          - com.loopers.infrastructure.payment.pg.PgServerException
+        ignore-exceptions:
+          - com.loopers.support.error.CoreException
+  bulkhead:
+    instances:
+      pg-request:
+        max-concurrent-calls: 20
+  retry:
+    retry-aspect-order: 2
+    instances:
+      pg-query:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2.0
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+        retry-exceptions:
+          - java.io.IOException
+          - com.loopers.infrastructure.payment.pg.PgServerException
+
 springdoc:
   use-fqn: true
   swagger-ui:

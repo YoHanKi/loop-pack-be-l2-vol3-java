@@ -83,7 +83,7 @@ class PgClientTest {
         }
 
         @Test
-        @DisplayName("PG가 500 응답 시 INTERNAL_ERROR CoreException이 발생한다")
+        @DisplayName("PG가 500 응답 시 PgServerException이 발생한다")
         void internalServerError() {
             stubFor(post(urlEqualTo("/api/v1/payments"))
                 .willReturn(aResponse()
@@ -95,13 +95,11 @@ class PgClientTest {
                 "http://localhost:8080/api/v1/payments/callback");
 
             assertThatThrownBy(() -> pgClient.requestPayment(MEMBER_ID, request))
-                .isInstanceOf(CoreException.class)
-                .satisfies(ex -> assertThat(((CoreException) ex).getErrorType())
-                    .isEqualTo(ErrorType.INTERNAL_ERROR));
+                .isInstanceOf(PgServerException.class);
         }
 
         @Test
-        @DisplayName("PG가 503 응답 시 INTERNAL_ERROR CoreException이 발생한다")
+        @DisplayName("PG가 503 응답 시 PgServerException이 발생한다")
         void serviceUnavailable() {
             stubFor(post(urlEqualTo("/api/v1/payments"))
                 .willReturn(aResponse()
@@ -113,9 +111,7 @@ class PgClientTest {
                 "http://localhost:8080/api/v1/payments/callback");
 
             assertThatThrownBy(() -> pgClient.requestPayment(MEMBER_ID, request))
-                .isInstanceOf(CoreException.class)
-                .satisfies(ex -> assertThat(((CoreException) ex).getErrorType())
-                    .isEqualTo(ErrorType.INTERNAL_ERROR));
+                .isInstanceOf(PgServerException.class);
         }
 
         @Test
