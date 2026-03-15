@@ -38,3 +38,6 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+/docs/discussion
+/docs/plan

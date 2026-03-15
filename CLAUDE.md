@@ -1,46 +1,35 @@
-# Loopers Commerce Platform - 개발 가이드
+# Loopers Commerce Platform
 
-## 프로젝트 개요
-
-Spring Boot 기반 멀티모듈 커머스 플랫폼
-
-### 핵심 기술 스택
+## 기술 스택
 - **Java 21** + **Spring Boot 3.4.4** + **Gradle (Kotlin DSL)**
 - **JPA + QueryDSL**, **Redis**, **Kafka**, **MySQL 8.x**
-- **SpringDoc OpenAPI 2.7.0** (Swagger UI)
 - **TestContainers**, **JUnit 5**, **AssertJ**, **Mockito**
-- **Prometheus + Grafana** (모니터링)
+- **SpringDoc OpenAPI 2.7.0**, **Prometheus + Grafana**
+
+## 주요 명령어
+```bash
+./gradlew :apps:commerce-api:bootRun
+./gradlew :apps:commerce-api:test
+./gradlew test
+```
 
 ---
 
 ## 모듈 구조
-
 ```
 Root
-├── apps/                 # 실행 가능한 애플리케이션
-│   ├── commerce-api      # REST API 서버
-│   ├── commerce-batch    # 배치 작업
-│   └── commerce-streamer # Kafka 스트리밍
-├── modules/              # 재사용 가능한 인프라
-│   ├── jpa              # JPA, QueryDSL 설정
-│   ├── redis            # Redis 설정
-│   └── kafka            # Kafka 설정
-└── supports/             # 부가 기능
-    ├── jackson          # JSON 직렬화
-    ├── logging          # Logback 설정
-    └── monitoring       # Actuator, Prometheus
+├── apps/commerce-api      # REST API
+├── apps/commerce-batch    # 배치
+├── apps/commerce-streamer # Kafka 스트리밍
+├── modules/jpa|redis|kafka
+└── supports/jackson|logging|monitoring
 ```
-
-### 의존성 규칙
-- apps → modules, supports (의존 가능)
-- modules ↔ modules (상호 의존 금지)
-- supports ↔ supports (상호 의존 금지)
-- modules, supports → apps (의존 불가)
+- apps → modules, supports 의존 가능
+- modules ↔ modules, supports ↔ supports 상호 의존 금지
 
 ---
 
-## 아키텍처 - 레이어드 아키텍처
-
+## 아키텍처
 ```
 Interfaces Layer (Controller, ApiSpec, Dto)
     ↓
@@ -51,283 +40,119 @@ Domain Layer (Model, Service, Repository, VO)
 Infrastructure Layer (RepositoryImpl, JpaRepository, Converter)
 ```
 
-### 레이어별 핵심 책임
+**의존성 방향**
+- 단일 도메인 + 비즈니스 로직: `Controller → App → Service → Repository`
+- 단일 도메인 + 단순 조회: `Controller → App → Repository`
+- 크로스 도메인: `Controller → Facade → App(2개 이상) → Service/Repository`
 
-**Domain Layer** - 핵심 비즈니스 로직
-- **Model**: JPA Entity, `BaseEntity` 상속, 정적 팩토리 `create()`, 도메인 행위 메서드
-- **Service**: 비즈니스 규칙 검증, 상태 변경, 크로스 도메인 조율 등 비즈니스 로직 담당. 단순 조회만 하는 경우 App에서 Repository 직접 호출 허용
-- **Repository**: 데이터 조회 및 저장, `findByXXX().orElseThrow()` 패턴 사용
-- **Value Object**: `record` 타입, Compact Constructor 검증, 불변
+**어노테이션**: App `@Component`, Facade `@Component`, Service `@Service` — 혼용 금지
 
-**Application Layer** - 유스케이스 조합
-- **App**: 단일 도메인 유스케이스 처리. Service 또는 Repository 호출 및 Model → Info 변환 담당
-- **Facade**: **2개 이상의 App을 조합**할 때만 사용. 크로스 도메인 오케스트레이션
-
-**Interfaces Layer** - 외부 통신
-- **Controller**: REST API, `ApiResponse` 반환
-- **Dto**: `record` 타입, Jakarta Validation
-
-**Infrastructure Layer** - 기술 구현
-- **RepositoryImpl**: Domain Repository 구현
-- **JpaRepository**: Spring Data JPA
-- **Converter**: Value Object ↔ DB 변환
+상세 내용 → `/architecture` skill
 
 ---
 
-## 코딩 컨벤션
+## 네이밍 규칙
 
-### 네이밍 규칙
-- Entity: `{Domain}Model` (예: `MemberModel`)
-- Service: `{Domain}Service`
-- Repository: `{Domain}Repository` / `{Domain}RepositoryImpl` / `{Domain}JpaRepository`
-- Controller: `{Domain}V{version}Controller`
-- DTO: `{Domain}V{version}Dto`
-- Value Object: `{Name}` (예: `MemberId`, `Email`)
-- Converter: `{ValueObject}Converter`
-- App: `{Domain}App` (예: `MemberApp`) — 단일 도메인 유스케이스
-- Facade: `{Domain}Facade` (예: `OrderFacade`) — 2개 이상 App 조합 시에만 사용
-- Info: `{Domain}Info` (예: `MemberInfo`) — Application 레이어 결과 VO
+| 타입 | 패턴 | 예시 |
+|------|------|------|
+| Entity | `{Domain}Model` | `MemberModel` |
+| Value Object | `{Concept}` | `MemberId`, `Email` |
+| Service | `{Domain}Service` | `MemberService` |
+| Repository | `{Domain}Repository` / `Impl` / `JpaRepository` | `MemberRepository` |
+| Controller | `{Domain}V{n}Controller` | `MemberV1Controller` |
+| DTO | `{Domain}V{n}Dto` | `MemberV1Dto` |
+| App | `{Domain}App` | `MemberApp` |
+| Facade | `{Domain}Facade` — 2개 이상 App 조합 시에만 | `OrderFacade` |
+| Info | `{Domain}Info` | `MemberInfo` |
+| Converter | `{ValueObject}Converter` | `MemberIdConverter` |
 
-### 타입 사용
-- **Entity**: `class` (가변 상태)
-- **Value Object**: `record` (불변)
-- **DTO**: `record` (불변)
-
-### 의존성 주입
-- `@RequiredArgsConstructor` + `private final` (생성자 주입)
+- 타 도메인 PK 파라미터 메서드: `RefId` 접미사 (`DbId` 금지)
+  - 예: `getProductByRefId(Long id)`
+- 타입 사용: Entity `class`, Value Object `record`, DTO `record`
+- 의존성 주입: `@RequiredArgsConstructor` + `private final`
 
 ---
 
-## 개발 워크플로우 - TDD
-
-### Red → Green → Refactor
-1. **Red**: 실패하는 테스트 먼저 작성 (3A 패턴)
-2. **Green**: 테스트 통과하는 최소 코드 (오버엔지니어링 금지)
-3. **Refactor**: 불필요한 코드 제거, 품질 개선 (모든 테스트 통과 필수)
-
-### 테스트 레벨
-- **단위 테스트**: Value Object, 도메인 로직 (외부 의존성 없음)
-- **통합 테스트**: Service + Repository (`@SpringBootTest`, TestContainers, DatabaseCleanUp)
-- **E2E 테스트**: REST API (`RANDOM_PORT`, TestRestTemplate)
+## Never Do (절대 금지)
+- ❌ 불필요한 주석 — 로직이 자명하지 않은 경우에만 작성
+- ❌ `var` 키워드 → 명시적 타입 선언
+- ❌ `EntityManager` 직접 사용 → `JpaRepository @Query`
+- ❌ `System.out.println` → `@Slf4j`
+- ❌ null 반환 → `Optional` 활용
+- ❌ 테스트 `@Disabled` 또는 assertion 약화
+- ❌ class/record 내부 nested class/record → 별도 파일 분리
+- ❌ App → App 의존 (크로스 도메인은 Facade 책임)
+- ❌ Facade → Facade 의존
+- ❌ Facade → Service 직접 호출 → 반드시 App 경유
+- ❌ 단일 App만 쓰는 Facade 생성 → App 직접 사용
+- ❌ 비즈니스 로직(검증·상태변경)이 있는 경우 App → Repository 직접 의존 → Service 경유
+- ❌ AI가 자의적으로 커밋 실행 — 커밋 메시지만 제안
 
 ---
 
-## 핵심 원칙
+## 과정 기록 (필수)
 
-### 진행 Workflow - 증강 코딩
-- **대원칙**: 방향성 및 주요 의사 결정은 개발자 승인 필수
-- AI는 제안만 가능, 임의 판단 금지
-- 중간 결과 보고 및 개발자 개입 허용
+의사결정, 실험 결과, 트레이드오프 논의는 **`docs/discussion/{현재 브랜치명}-discussion.md`** 에 기록.
+파일이 없으면 대화 시작 시 생성. 있으면 기존 내용에 **추가(append)**.
 
-### 의사결정 체크포인트 (필수)
-AI는 아래 시점마다 **반드시 멈추고 개발자에게 승인을 요청**한다. 승인 없이 다음 단계로 진행 금지.
+기록 대상: 설계 방향 선택, 구현 방식 변경, 테스트 실행 결과(PASS/FAIL·수치·EXPLAIN), 기각된 대안
 
-1. **기능 단위 구현 시작 전**: 구현할 내용, 영향 범위, 예상 파일 목록을 보고하고 승인 대기
-2. **설계 방향 결정 시**: 복수 대안이 존재하는 경우 각 대안의 트레이드오프를 제시하고 선택 요청
-3. **기존 코드 수정 시**: 수정 대상 파일과 변경 이유를 명시하고 승인 대기
-4. **테스트 전략 결정 시**: 단위/통합/E2E 중 어떤 테스트를 어떻게 작성할지 제안 후 승인 대기
-
-### 대안 제시 원칙 (필수)
-구현 방식을 결정해야 하는 모든 시점에서 AI는 **독단적으로 선택하지 않는다**.
-반드시 **최소 2개 이상의 대안**을 제시하고 개발자가 선택한 뒤에만 구현을 시작한다.
-
-#### 대안 제시가 필요한 시점
-- 라이브러리/프레임워크 선택 (예: SQL vs QueryDSL, Redis vs in-memory)
-- 구현 패턴 선택 (예: switch vs enum Strategy, 인터페이스 vs 추상 클래스)
-- 데이터 저장 방식 선택 (예: SQL 스크립트 vs CommandLineRunner vs TestFixture)
-- 캐시/동시성/트랜잭션 전략 선택
-- 테스트 방식 선택 (예: Mockito vs TestContainers, 단위 vs 통합)
-- 기타 "어떻게 구현할까"라는 질문이 생기는 모든 순간
-
-#### 대안 제시 형식
-```
-구현 방식을 결정해야 합니다. 아래 대안 중 선택해주세요.
-
-**A: [방법명]**
-- 방식: ...
-- 장점: ...
-- 단점: ...
-
-**B: [방법명]**
-- 방식: ...
-- 장점: ...
-- 단점: ...
-
-(필요 시 C도 추가)
-
-어떤 방식으로 진행할까요?
-```
-
-#### 금지 행동
-- ❌ 대안 제시 없이 AI가 판단한 "더 나은" 방법을 바로 구현하는 행위
-- ❌ 대안을 설명하면서 동시에 구현을 시작하는 행위
-- ❌ "A 방식으로 진행하겠습니다"처럼 AI가 선택을 결론 짓는 행위
-
-### 과정 기록 원칙 (필수)
-
-모든 설계 결정, 실험 과정, 테스트 결과는 **`.idea/volume-{N}-discussion.md`에 기록**한다.
-파일이 없으면 대화 시작 시 생성. 파일이 있으면 기존 내용에 **추가(append)**.
-
-#### 기록 대상 (반드시 기록)
-- 설계 방향 선택, 라이브러리/전략 결정, 트레이드오프 논의
-- 구현 방식 변경 및 변경 이유
-- **테스트 실행 결과** (PASS/FAIL, 수치, EXPLAIN 결과 등) — 결정의 근거로 반드시 첨부
-- 단계적 접근에서 각 단계의 결과와 다음 단계로 넘어간 이유
-- 기각된 대안과 기각 이유
-- **테스트 코드가 이후 삭제/변경되더라도 당시의 실행 기록과 의사결정은 반드시 유지**
-
-#### 기록 형식
 ```markdown
 ## [날짜] 주제
 
 ### 상황
-현재 문제 또는 목표
-
 ### 실험/테스트 기록
-- 시도한 방법: ...
-- 실행 결과: (수치, EXPLAIN 출력, 테스트 PASS/FAIL 등)
-- 관찰: ...
-
-### 선택지 비교
-| 항목 | 방법 A | 방법 B |
-|------|--------|--------|
-| 성능 | ... | ... |
-| 복잡도 | ... | ... |
-
 ### 결정
-- 선택: 방법 A
+- 선택: ...
 - 이유: (테스트 결과 기반으로 구체적으로)
-
 ### 기각된 대안
-- 방법 B: 기각 이유 (근거 포함)
-
 ### 다음 단계
-- ...
 ```
 
-#### 단계적 구현 원칙
-- 기술 도입은 **가장 단순한 것부터 시작해 점진적으로 고도화**한다
-- 각 단계에서 테스트로 효과를 검증한 뒤 다음 단계로 진행
-- 예: 캐시 → (1) Spring 기본 캐시(in-memory) → (2) TTL 제어 → (3) Redis 분산 캐시
-- 각 단계의 한계를 직접 확인하고 기록한 뒤 다음 단계로 이동
+---
 
-### 커밋 단위 원칙 (필수)
-- **1 논리 단위 = 1 커밋**: 기능 하나, 리팩토링 하나, 테스트 추가 하나를 각각 별도 커밋
-- 금지: 여러 기능/도메인/레이어 변경을 하나의 커밋에 혼합
-- 커밋 메시지 형식: `type(scope): 설명` (예: `feat(product): 상품 목록 인덱스 추가`)
-- 커밋 타이밍: AI가 자의적으로 커밋 실행 금지. 커밋 시점 시 커밋 메세지만 전달.
+## 의사결정 원칙 (필수)
 
-**커밋 단위 예시 (올바른 분리)**
+AI는 아래 시점마다 **반드시 멈추고 개발자에게 승인**을 요청한다.
+
+1. **구현 시작 전**: 구현 내용·영향 범위·예상 파일 목록 보고 후 승인 대기
+2. **설계 방향 결정**: 최소 2개 이상 대안을 제시하고 개발자 선택 후 구현 시작
+3. **기존 코드 수정**: 수정 대상 파일과 변경 이유 명시 후 승인 대기
+
+**대안 제시 형식**
 ```
-feat(product): products 테이블 복합 인덱스 추가
-feat(product): 상품 목록 조회 QueryDSL 필터/정렬 구현
-test(product): 상품 목록 조회 통합 테스트 추가
-feat(cache): 상품 상세 Redis 캐시 적용
-feat(cache): 상품 목록 Redis 캐시 적용
+A: [방법명] — 방식 / 장점 / 단점
+B: [방법명] — 방식 / 장점 / 단점
+어떤 방식으로 진행할까요?
 ```
 
-### Never Do (절대 금지)
-- ❌ 코드에 불필요한 주석 작성 금지 — 로직이 자명하지 않은 경우에만 작성. 클래스/메서드 설명 주석, Phase 설명 주석, 한계 설명 주석 등 코드로 표현 가능한 내용은 모두 금지
-- ❌ 실제 동작하지 않는 코드 작성 금지
-- ❌ null-safety 위반 금지 (Optional 활용)
-- ❌ println 코드 남기지 말 것 (`@Slf4j` 사용)
-- ❌ 테스트 임의 삭제/수정 금지 (`@Disabled`, assertion 약화 금지)
-- ❌ `var` 키워드 사용 금지 — 반드시 명시적 타입으로 선언
-- ❌ `EntityManager` 직접 사용 금지 — JpaRepository `@Query`로 대체
-- ❌ 비즈니스 로직(검증·상태변경·크로스도메인)이 있는 경우 App에서 Repository 직접 의존 금지 — 반드시 Service 경유
-- ✅ 단순 조회(비즈니스 규칙·상태 변경 없음)는 App에서 Repository 직접 의존 허용
-- ❌ App → App 의존 금지 (크로스 도메인은 Facade 책임)
-- ❌ Facade → Facade 의존 금지
-- ❌ Facade → Service 직접 호출 금지 — 반드시 App 경유
-- ❌ Facade를 단일 도메인에서만 사용 금지 — App을 사용할 것
-- ❌ 클래스/record 내부에 nested 클래스/record 정의 금지 — 별도 파일로 분리
-
-### Recommendation (권장사항)
-- ✅ 실제 API를 호출해 확인하는 E2E 테스트 작성
-- ✅ 재사용 가능한 객체 설계 (Value Object 활용)
-- ✅ 성능 최적화 대안 제안 (N+1 해결, 인덱스, 캐싱)
-- ✅ 개발 완료 API는 `.http/**.http`에 작성
-
-### Priority (우선순위)
-1. **실제 동작하는 해결책만 고려**
-2. **null-safety, thread-safety 고려**
-3. **테스트 가능한 구조로 설계**
-4. **기존 코드 패턴 분석 후 일관성 유지**
+- ❌ 대안 없이 AI가 "더 나은" 방법을 바로 구현하는 행위
+- ❌ 대안 설명과 동시에 구현 시작
+- ❌ "A 방식으로 진행하겠습니다"처럼 AI가 선택을 결론 짓는 행위
 
 ---
 
-## 환경 설정
+## 커밋 원칙
+- **1 논리 단위 = 1 커밋** (`type(scope): 설명`)
+- 여러 기능/도메인/레이어 변경을 하나의 커밋에 혼합 금지
+- AI는 커밋 메시지만 제안, 실행은 개발자
 
-### 프로파일
-- **local**: 로컬 개발 / **test**: 테스트 (TestContainers)
-- **dev**: 개발 서버 / **qa**: QA 서버 / **prd**: 운영 서버
+## 단계적 구현 원칙
+가장 단순한 것부터 시작해 테스트로 검증 후 점진적 고도화
+예: 캐시 → (1) in-memory → (2) TTL → (3) Redis 분산 캐시
 
----
-
-## 도메인 예시 (Member)
-
-### Value Objects
-- **MemberId**: 영문+숫자, 1~10자
-- **Email**: RFC 5322, 소문자 정규화
-- **BirthDate**: yyyy-MM-dd, 과거 날짜, 130년 이내
-- **Password**: 8~16자, 영문 대소문자+숫자+특수문자, 생년월일 불포함
-
-### API 엔드포인트
-- `POST /api/v1/members/register`: 회원 가입
-- `GET /api/v1/members/me`: 내 정보 조회 (X-Loopers-LoginId, X-Loopers-LoginPw 헤더)
-- `PATCH /api/v1/members/me/password`: 비밀번호 수정
+## 환경 프로파일
+`local` 로컬 / `test` TestContainers / `dev` `qa` `prd` 서버
 
 ---
 
-## 추가 리소스
-
-상세한 가이드는 `.claude/skills/` 디렉토리 참조:
-- `architecture`: 레이어드 아키텍처 상세
-- `coding-standards`: 네이밍, 타입 패턴
-- `testing`: 단위/통합/E2E 테스트 가이드
-- `development-workflow`: TDD 상세 프로세스
-- `pr-creation`: PR 작성 가이드
-- `domain-rules`: 도메인 비즈니스 규칙
-- `jpa-database`: JPA, BaseEntity, Converter 패턴
-
----
-
-## 도메인 & 객체 설계 전략
-
-- 도메인 모델링은 데이터 설계가 아니라 **업무 규칙을 객체 책임으로 고정**하는 작업입니다.
-- **Entity**: ID로 동일성 판단, 상태 변화와 연속성이 핵심(행위를 내부에 둠).
-- **VO**: 값 자체가 핵심, 불변 + 생성 시 유효성 강제(원시타입 규칙 중복 제거).
-- **Domain Service**: 특정 엔티티에 두기 부자연스러운 "도메인 규칙"만, 무상태로 둠.
-- **Application Service(Usecase)**: 트랜잭션/권한/저장/외부연동 등 "흐름 조립" 담당, 규칙은 도메인에 위임.
-- 규칙이 여러 서비스에 반복되면 → **도메인(엔티티/VO/도메인서비스)로 내려갈 신호**입니다.
-- 관계 자체가 의미를 가지면(누가/언제/중복/취소/이력) → `Like`처럼 **독립 도메인으로 분리**합니다.
-- 동시성 규칙은 if문만 믿지 말고 **DB 제약(유니크)로 최종 방어선**을 둡니다.
-- 의존 방향은 **Interfaces → Application → Domain ← Infrastructure**(Repo 인터페이스는 Domain, 구현은 Infra).
-- 리뷰 기준: 도메인이 기술(Spring/JPA/HTTP)을 모르고, 컬렉션/상태 변경은 루트가 통제하며, 테스트는 Fake로 가능해야 합니다.
-
----
-
-## 아키텍처, 패키지 구성 전략
-
-- **레이어 의존성 방향 (단일 도메인, 비즈니스 로직 있음)**: `Controller → App → Service → Repository`
-- **레이어 의존성 방향 (단일 도메인, 단순 조회)**: `Controller → App → Repository`
-- **레이어 의존성 방향 (크로스 도메인)**: `Controller → Facade → App(복수) → Service/Repository`
-- Infrastructure는 Domain 인터페이스 구현 (Port-Adapter).
-- **App 원칙**: App은 단일 도메인의 유스케이스를 처리. Model → Info 변환 담당. 비즈니스 로직은 Service에 위임. 단순 조회는 Repository 직접 호출 허용.
-- **Facade 사용 조건**: **2개 이상의 App을 조합할 때만** Facade를 사용. 단일 도메인은 App으로 처리.
-- **App 어노테이션**: App은 `@Component`, Service는 `@Service`, Facade는 `@Component` — 절대 혼용 금지.
-- **App 의존성**: App → Service (비즈니스 로직), App → Repository (단순 조회) 허용. App → App 의존은 금지.
-- **Facade 의존성**: Facade → App만 허용 (2개 이상). Facade → Service 직접 호출, Facade → Repository 직접 의존, Facade → Facade 의존은 모두 금지.
-- **크로스 도메인 오케스트레이션**: 여러 도메인을 걸치는 연쇄 처리(cascade 등)는 Service가 아닌 Facade에서 App을 통해 조율.
-- **DTO vs Info vs Model 분리**: DTO(HTTP 계층) → Info(Application 결과 VO) → Model(Domain Entity), 각 레이어 독립성 유지.
-- **Service 책임**: 비즈니스 규칙 검증, 상태 변경, 크로스 도메인 Repository 조율. 단순 조회만 하는 경우 Service 생략 가능.
-- **Service 크로스 도메인**: Service는 트랜잭션 원자성을 위해 타 도메인 Repository를 직접 사용 가능. 이때 해당 도메인 VO import도 허용.
-- **Repository Pattern**: Domain에 Repository 인터페이스(Port), Infrastructure에 구현체(Adapter), Domain이 Infrastructure를 모름.
-- **도메인 VO 소유권**: Model과 Repository 인터페이스는 자기 도메인 vo만 사용. `RefMemberId` 같은 참조 VO는 사용하는 도메인이 자기 vo 패키지에 별도 정의.
-- **Info 변환**: App에서 Model → Info 변환, Controller는 Model 노출 금지(Info만 사용), 레이어 격리 유지.
-- **컴포넌트 책임**: Controller(HTTP), App(단일 도메인 유스케이스 + Info 변환), Facade(복수 App 조합), Service(비즈니스 로직 + 조회), Repository(영속화).
-- **메서드 네이밍**: 타 도메인 PK를 파라미터로 받는 메서드는 `RefId` 접미사 사용 (`DbId` 금지). 예: `getProductByRefId(Long id)`.
-
----
-
-이 문서는 프로젝트의 핵심 원칙과 구조를 요약합니다. 상세 내용은 skills를 참조하세요.
+## Skills (상세 가이드)
+- `/architecture` — 레이어·의존성·패키지 구조·코드 예시
+- `/coding-standards` — 네이밍·타입·예외·JPA Converter
+- `/testing` — 단위/통합/E2E 테스트 전략
+- `/development-workflow` — TDD Red→Green→Refactor
+- `/jpa-database` — JPA 패턴·N+1·Soft Delete
+- `/domain-rules` — 도메인 비즈니스 규칙
+- `/analyze-query` — 트랜잭션·쿼리 분석
+- `/requirements-analysis` — 요구사항 설계
+- `/pr-creation` — PR 작성
