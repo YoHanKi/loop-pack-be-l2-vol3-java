@@ -9,29 +9,39 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PgResultTest {
 
     @Test
-    @DisplayName("unavailable() 팩토리 메서드는 pgTransactionId가 null이고 UNAVAILABLE 상태를 반환한다")
+    @DisplayName("unavailable() 팩토리 메서드는 pgTransactionKey가 null이고 UNAVAILABLE 상태를 반환한다")
     void unavailable_returnsCorrectResult() {
         PgResult result = PgResult.unavailable();
 
-        assertThat(result.pgTransactionId()).isNull();
+        assertThat(result.pgTransactionKey()).isNull();
         assertThat(result.status()).isEqualTo(PgStatus.UNAVAILABLE);
         assertThat(result.isUnavailable()).isTrue();
     }
 
     @Test
-    @DisplayName("PROCESSING 상태일 때 isAccepted()는 true를 반환한다")
-    void isAccepted_whenProcessing_returnsTrue() {
-        PgResult result = new PgResult("txId", PgStatus.PROCESSING);
+    @DisplayName("PENDING 상태일 때 isAccepted()는 true를 반환한다")
+    void isAccepted_whenPending_returnsTrue() {
+        PgResult result = new PgResult("txKey", PgStatus.PENDING, null);
 
         assertThat(result.isAccepted()).isTrue();
         assertThat(result.isUnavailable()).isFalse();
     }
 
     @Test
-    @DisplayName("COMPLETED 상태일 때 isAccepted()는 false를 반환한다")
-    void isAccepted_whenCompleted_returnsFalse() {
-        PgResult result = new PgResult("txId", PgStatus.COMPLETED);
+    @DisplayName("SUCCESS 상태일 때 isSuccess()는 true를 반환한다")
+    void isSuccess_whenSuccess_returnsTrue() {
+        PgResult result = new PgResult("txKey", PgStatus.SUCCESS, "정상 승인되었습니다.");
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.isAccepted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("FAILED 상태일 때 isAccepted()와 isSuccess()는 false를 반환한다")
+    void isAccepted_whenFailed_returnsFalse() {
+        PgResult result = new PgResult("txKey", PgStatus.FAILED, "한도초과입니다. 다른 카드를 선택해주세요.");
 
         assertThat(result.isAccepted()).isFalse();
+        assertThat(result.isSuccess()).isFalse();
     }
 }
