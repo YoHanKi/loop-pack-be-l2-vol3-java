@@ -41,6 +41,7 @@ out/
 
 /docs/discussion
 /docs/plan
+/docs/test
 
 ### claude settings ###
 *.local.json

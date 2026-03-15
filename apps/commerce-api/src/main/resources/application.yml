@@ -23,6 +23,23 @@ spring:
       - redis.yml
       - logging.yml
       - monitoring.yml
+  cloud:
+    openfeign:
+      okhttp:
+        enabled: true
+      httpclient:
+        max-connections: 200
+        max-connections-per-route: 30
+        time-to-live: 900
+      client:
+        config:
+          pg-client:
+            connect-timeout: 1000
+            read-timeout: 2000
+
+pg:
+  simulator:
+    url: http://localhost:8082
 
 springdoc:
   use-fqn: true
@@ -34,6 +51,16 @@ spring:
   config:
     activate:
       on-profile: local, test
+  cloud:
+    openfeign:
+      client:
+        config:
+          pg-client:
+            logger-level: FULL
+
+logging:
+  level:
+    com.loopers.infrastructure.payment.pg.PgClient: DEBUG
 
 ---
 spring:
@@ -52,6 +79,16 @@ spring:
   config:
     activate:
       on-profile: prd
+  cloud:
+    openfeign:
+      client:
+        config:
+          pg-client:
+            logger-level: BASIC
+
+logging:
+  level:
+    com.loopers.infrastructure.payment.pg.PgClient: DEBUG
 
 springdoc:
   api-docs:
