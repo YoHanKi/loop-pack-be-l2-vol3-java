@@ -265,7 +265,8 @@ public class MemberApp {
 **App 의존성 규칙**:
 ```
 ✅ App → Service (허용)
-❌ App → Repository 직접 의존 (금지)
+✅ App → Repository 직접 의존 (단순 조회 — 비즈니스 로직·상태 변경 없음)
+❌ App → Repository 직접 의존 (비즈니스 로직·검증·상태 변경이 있는 경우 — Service 경유 필수)
 ❌ App → App 의존 (금지 — 크로스 도메인은 Facade 책임)
 ❌ App → Facade 의존 (금지)
 ```
@@ -477,7 +478,8 @@ com.loopers
 ### App 의존성 규칙
 ```
 ✅ App → Service (허용)
-❌ App → Repository 직접 의존 (금지)
+✅ App → Repository 직접 의존 (단순 조회만 — 비즈니스 로직·상태 변경 없음)
+❌ App → Repository 직접 의존 (비즈니스 로직·검증·상태 변경이 있는 경우 — Service 경유 필수)
 ❌ App → App 의존 (금지)
 ❌ App → Facade 의존 (금지)
 ```

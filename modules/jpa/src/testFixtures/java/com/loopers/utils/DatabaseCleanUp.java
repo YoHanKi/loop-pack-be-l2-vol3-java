@@ -5,6 +5,8 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Table;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +18,9 @@ public class DatabaseCleanUp implements InitializingBean {
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    @Autowired(required = false)
+    private CacheManager cacheManager;
 
     private final List<String> tableNames = new ArrayList<>();
 
@@ -37,5 +42,9 @@ public class DatabaseCleanUp implements InitializingBean {
         }
 
         entityManager.createNativeQuery("SET FOREIGN_KEY_CHECKS = 1").executeUpdate();
+
+        if (cacheManager != null) {
+            cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
+        }
     }
 }

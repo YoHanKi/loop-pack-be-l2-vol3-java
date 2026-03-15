@@ -2,6 +2,7 @@ package com.loopers.application.product;
 
 import com.loopers.application.brand.BrandApp;
 import com.loopers.application.brand.BrandInfo;
+import com.loopers.domain.common.cursor.CursorPageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -38,6 +39,11 @@ public class ProductFacade {
     public Page<ProductInfo> getProducts(String brandId, String sortBy, Pageable pageable) {
         Page<ProductInfo> products = productApp.getProducts(brandId, sortBy, pageable);
         return products.map(this::enrichProductInfo);
+    }
+
+    public CursorPageResult<ProductInfo> getProductsByCursor(String brandId, String sortBy, String cursor, int size) {
+        CursorPageResult<ProductInfo> result = productApp.getProductsByCursor(brandId, sortBy, cursor, size);
+        return result.map(this::enrichProductInfo);
     }
 
     public ProductInfo getProductByRefId(Long id) {

@@ -442,8 +442,9 @@ public record Email(String address) {
         private final MemberApp memberApp;
     }
     ```
-11. **App/Facade에서 Repository 직접 의존 금지**: 반드시 Service 경유
-12. **Facade에서 Service 직접 호출 금지**: 반드시 App 경유
+11. **App에서 비즈니스 로직이 있는 경우 Repository 직접 의존 금지**: 반드시 Service 경유. 단순 조회(비즈니스 규칙·상태 변경 없음)는 App → Repository 직접 허용
+12. **Facade에서 Repository 직접 의존 금지**: 반드시 App 경유
+13. **Facade에서 Service 직접 호출 금지**: 반드시 App 경유
 
 ### ✅ Best Practices
 1. **불변 객체 선호**: `record`, `final` 활용

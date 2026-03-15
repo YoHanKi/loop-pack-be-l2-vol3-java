@@ -96,6 +96,21 @@ class LayeredArchitectureTest {
                         )
                 )
 
+                // 예외 4: QueryDSL Q-classes — annotation processor가 domain 패키지에 생성하지만
+                //        실제 역할은 Infrastructure(QueryDSL) 레이어에 속함.
+                //        Infrastructure에서 Q-class를 사용하는 것은 정상적인 QueryDSL 패턴.
+                .ignoreDependency(
+                        DescribedPredicate.describe(
+                                "Infrastructure classes using QueryDSL",
+                                javaClass -> javaClass.getPackageName().startsWith("com.loopers.infrastructure")
+                        ),
+                        DescribedPredicate.describe(
+                                "QueryDSL Q-classes in domain package",
+                                javaClass -> javaClass.getSimpleName().startsWith("Q")
+                                        && javaClass.getPackageName().startsWith("com.loopers.domain")
+                        )
+                )
+
                 // 의존성 규칙 (다이어그램과 동일한 방향)
                 // Interfaces → Application → Domain ↔ Infrastructure
                 .whereLayer("Interfaces").mayNotBeAccessedByAnyLayer()
