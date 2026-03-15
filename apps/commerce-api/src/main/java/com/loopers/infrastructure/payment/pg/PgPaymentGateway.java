@@ -35,7 +35,7 @@ public class PgPaymentGateway implements PaymentGateway {
                 callbackUrl
             )
         );
-        return new PgResult(response.transactionKey(), response.status(), null);
+        return new PgResult(response.transactionKey(), response.status(), null, null);
     }
 
     PgResult requestPaymentFallback(PaymentModel payment, String callbackUrl, CallNotPermittedException e) {
@@ -60,7 +60,8 @@ public class PgPaymentGateway implements PaymentGateway {
         PgTransactionDetailResponse response = pgClient.getPaymentStatus(
             String.valueOf(memberId), pgTransactionId
         );
-        return new PgResult(response.transactionKey(), response.status(), response.reason());
+        return new PgResult(response.transactionKey(), response.status(), response.reason(),
+            response.amount() != null ? java.math.BigDecimal.valueOf(response.amount()) : null);
     }
 
     PgResult getPaymentResultFallback(String pgTransactionId, Long memberId, Throwable t) {
@@ -80,7 +81,7 @@ public class PgPaymentGateway implements PaymentGateway {
             return PgResult.unavailable();
         }
         PgTransactionResponse tx = transactions.get(0);
-        return new PgResult(tx.transactionKey(), tx.status(), null);
+        return new PgResult(tx.transactionKey(), tx.status(), null, null);
     }
 
     PgResult getPaymentByOrderIdFallback(Long orderId, Long memberId, Throwable t) {

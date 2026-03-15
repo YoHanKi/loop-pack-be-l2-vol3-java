@@ -1,9 +1,9 @@
 package com.loopers.domain.payment;
 
-public record PgResult(String pgTransactionKey, PgStatus status, String reason) {
+public record PgResult(String pgTransactionKey, PgStatus status, String reason, java.math.BigDecimal amount) {
 
     public static PgResult unavailable() {
-        return new PgResult(null, PgStatus.UNAVAILABLE, null);
+        return new PgResult(null, PgStatus.UNAVAILABLE, null, null);
     }
 
     public boolean isAccepted() {
